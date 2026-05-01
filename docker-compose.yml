@@ -1,0 +1,120 @@
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: kounhany_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: kounhany
+      POSTGRES_PASSWORD: kounhany2024
+      POSTGRES_DB: kounhany_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/create_blnk_db.sql:/docker-entrypoint-initdb.d/00_create_blnk_db.sql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - kounhany_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kounhany -d kounhany_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: kounhany_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - kounhany_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  blnk:
+    image: jerryenebeli/blnk:v0.13.5
+    container_name: kounhany_blnk
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5001:5001"
+    environment:
+      BLNK_DATA_SOURCE_DNS: "postgres://kounhany:kounhany2024@postgres:5432/blnk_db?sslmode=disable"
+      BLNK_REDIS_DNS: "redis:6379"
+      BLNK_SERVER_PORT: "5001"
+      BLNK_PROJECT_NAME: "Kounhany Wallet"
+    command: sh -c "blnk migrate up && blnk start"
+    networks:
+      - kounhany_network
+
+  backend:
+    build: ./backend
+    container_name: kounhany_backend
+    restart: always
+    depends_on:
+      - blnk
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    networks:
+      - kounhany_network
+
+  frontend:
+    build: ./frontend
+    container_name: kounhany_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3001:3001"
+    env_file:
+       - ./frontend/.env.local
+    networks:
+      - kounhany_network
+
+  dolibarr:
+    image: dolibarr/dolibarr:latest
+    container_name: kounhany_dolibarr
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8888:80"
+    environment:
+      DOLI_DB_HOST: postgres
+      DOLI_DB_PORT: 5432
+      DOLI_DB_TYPE: pgsql
+      DOLI_DB_USER: kounhany
+      DOLI_DB_PASSWORD: kounhany2024
+      DOLI_DB_NAME: dolibarr_db
+      DOLI_ADMIN_LOGIN: admin
+      DOLI_ADMIN_PASSWORD: dolibarr2024
+      DOLI_URL_ROOT: "http://localhost:8888"
+      WWW_USER_ID: 33
+      WWW_GROUP_ID: 33
+    volumes:
+      - dolibarr_data:/var/www/html/documents
+      - dolibarr_custom:/var/www/html/custom
+      - ./docker/dolibarr/conf.php:/var/www/html/conf/conf.php
+    networks:
+      - kounhany_network
+
+networks:
+  kounhany_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  dolibarr_data:
+  dolibarr_custom:

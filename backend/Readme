@@ -1,0 +1,281 @@
+# Kounhany Wallet — Backend
+
+API Wallet Service basée sur **Blnk** (moteur double-entry) pour gérer tous les flux financiers de la plateforme Kounhany : B2B, Dolibarr, et préparation B2C.
+
+---
+
+## Stack technique
+
+| Couche | Technologie |
+|--------|-------------|
+| Runtime | Node.js 20 |
+| Framework | Express 4 |
+| Moteur financier | Blnk v0.13.5 |
+| Base de données | PostgreSQL 15 |
+| Cache / Queues | Redis 7 |
+| Documentation API | Swagger UI |
+| Tests | Jest + Supertest |
+| Conteneurisation | Docker |
+
+---
+
+## Prérequis
+
+- Docker Desktop installé et en cours d'exécution
+- Docker Compose v2+
+
+---
+
+## Démarrage rapide
+
+```bash
+# Depuis la racine du projet
+docker-compose up --build -d
+
+# Vérifier que le backend répond
+curl http://localhost:3000/health
+
+# Vérifier que Blnk répond
+curl http://localhost:5001/health
+```
+
+### Services disponibles
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Backend API | http://localhost:3000 | API Wallet Service |
+| Swagger Docs | http://localhost:3000/api-docs | Documentation interactive |
+| Blnk Ledger | http://localhost:5001 | Moteur financier |
+| PostgreSQL | localhost:5432 | Base de données |
+| Redis | localhost:6379 | Cache |
+
+---
+
+## Variables d'environnement
+
+Créer `backend/.env` :
+
+```env
+PORT=3000
+NODE_ENV=development
+APP_ENV=development
+APP_VERSION=1.0.0
+APP_URL=http://localhost:3000
+
+# Blnk
+BLNK_URL=http://blnk:5001
+
+# PostgreSQL
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=kounhany
+DB_PASSWORD=kounhany2024
+DB_NAME=kounhany_db
+
+# Auth temporaire
+API_KEY=kounhany-secret-2024
+
+# Redis
+REDIS_HOST=redis
+REDIS_PORT=6379
+```
+
+---
+
+## Données de test
+
+```bash
+# Créer 5 clients seed avec wallets et transactions
+docker exec -it kounhany_backend npm run seed
+
+# Vérifier les types de transactions créés
+docker exec -it kounhany_postgres psql -U kounhany -d kounhany_db \
+  -c "SELECT DISTINCT type, COUNT(*) FROM transaction_logs GROUP BY type;"
+```
+
+---
+
+## APIs disponibles
+
+Tous les endpoints nécessitent le header `x-api-key`.
+
+### Clients
+
+```
+GET    /clients                        Lister tous les clients
+GET    /clients/scim/users             Users synchronisés depuis IDP/SCIM
+POST   /clients/from-scim             Créer client + wallet depuis SCIM
+GET    /clients/:clientId              Détail d'un client
+GET    /clients/:clientId/wallet       Wallet complet + stats + historique
+```
+
+### Wallet
+
+```
+POST   /wallet/check-available         Vérifier le solde disponible
+POST   /wallet/block                   Bloquer un montant (réservation)
+POST   /wallet/confirm                 Confirmer un montant bloqué
+POST   /wallet/pay                     Enregistrer un paiement reçu
+POST   /wallet/external-debt           Enregistrer une dette Dolibarr
+POST   /wallet/external-payment        Enregistrer un paiement Dolibarr
+GET    /wallet/balance/:clientId       Soldes d'un client (3 comptes)
+GET    /wallet/transactions/:clientId  Historique des transactions
+```
+
+### KPIs
+
+```
+GET    /kpis/overview                  Vue d'ensemble financière
+GET    /kpis/transactions-trend        Tendance sur N jours
+GET    /kpis/top-clients               Top clients par volume
+GET    /kpis/alerts                    Alertes financières et système
+GET    /kpis/system-info               État des services (sanitisé)
+```
+
+### Santé
+
+```
+GET    /health                         Statut de l'API
+```
+
+---
+
+## Exemples d'utilisation
+
+### Créer un client depuis SCIM
+
+```bash
+curl -X POST http://localhost:3000/clients/from-scim \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: kounhany-secret-2024" \
+  -d '{
+    "scim_id": "scim_001",
+    "name": "Ahmed Alami",
+    "email": "ahmed@kounhany.ma",
+    "phone": "0612345678",
+    "currency": "MAD"
+  }'
+```
+
+### Recharger un wallet (PAYMENT)
+
+```bash
+curl -X POST http://localhost:3000/wallet/pay \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: kounhany-secret-2024" \
+  -d '{
+    "client_id": "client_xxx",
+    "amount": 5000,
+    "description": "Recharge initiale"
+  }'
+```
+
+### Bloquer un montant (BLOCK)
+
+```bash
+curl -X POST http://localhost:3000/wallet/block \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: kounhany-secret-2024" \
+  -d '{
+    "client_id": "client_xxx",
+    "amount": 1200,
+    "description": "Réservation fleet véhicule"
+  }'
+```
+
+### Vérifier les soldes
+
+```bash
+curl http://localhost:3000/wallet/balance/client_xxx \
+  -H "x-api-key: kounhany-secret-2024"
+```
+
+---
+
+## Tests
+
+```bash
+# Tous les tests
+docker exec -it kounhany_backend npm test
+
+# Tests unitaires uniquement
+docker exec -it kounhany_backend npm run test:unit
+
+# Tests d'intégration uniquement
+docker exec -it kounhany_backend npm run test:integration
+
+# Rapport de couverture
+docker exec -it kounhany_backend npm run test:coverage
+```
+
+### Résultats actuels
+
+```
+Test Suites : 6 passed
+Tests       : 62 passed
+Coverage    : 91.84%
+```
+
+---
+
+## Structure du projet
+
+```
+backend/
+├── Dockerfile
+├── package.json
+├── .env
+└── src/
+    ├── app.js                  Configuration Express
+    ├── server.js               Point d'entrée
+    ├── config/
+    │   ├── db.js               Pool PostgreSQL
+    │   ├── blnk.js             Config Blnk
+    │   └── seed.js             Données de test
+    ├── controllers/
+    │   ├── wallet.controller.js
+    │   ├── clients.controller.js
+    │   └── kpis.controller.js
+    ├── middlewares/
+    │   ├── auth.middleware.js   API Key
+    │   ├── error.middleware.js  Gestion erreurs
+    │   └── validate.middleware.js
+    ├── routes/
+    │   ├── wallet.routes.js
+    │   ├── clients.routes.js
+    │   └── kpis.routes.js
+    ├── services/
+    │   ├── blnk.service.js     Appels API Blnk
+    │   ├── wallet.service.js   Logique métier
+    │   ├── platform.service.js Comptes plateforme
+    │   └── kpis.service.js     Analytics et KPIs
+    ├── validations/
+    │   └── wallet.validation.js
+    └── tests/
+        ├── unit/
+        │   ├── middlewares.test.js
+        │   ├── blnk.service.test.js
+        │   ├── wallet.service.test.js
+        │   └── platform.service.test.js
+        └── integration/
+            ├── clients.test.js
+            └── wallet.test.js
+```
+
+---
+
+## Authentification
+
+Actuellement sécurisé par API Key via le header `x-api-key`.
+
+> **Note** : L'intégration IDP (Identity Provider) avec protocole SCIM est prévue en Phase 3. L'équipe technique est en cours de confirmation du provider (Keycloak, Okta, Azure AD). Le middleware auth sera remplacé par vérification JWT sans impact sur le reste du code.
+
+---
+
+## Roadmap
+
+| Phase | Statut | Contenu |
+|-------|--------|---------|
+| Phase 1 | ✅ Terminé | Blnk, APIs wallet, clients SCIM, KPIs, tests 62/62 |
+| Phase 2 | 🔄 Planifié | Dolibarr automatique, B2C CMI, scoring client |
+| Phase 3 | ⏳ Planifié | IDP/SCIM réel, intégration bancaire, paramètres |

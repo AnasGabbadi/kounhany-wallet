@@ -1,0 +1,208 @@
+# Kounhany Wallet — Frontend
+
+Dashboard admin Next.js 15 pour la gestion du Wallet Kounhany. Interface complète pour gérer les clients, wallets, transactions et surveiller l'état du système.
+
+---
+
+## Stack technique
+
+| Couche | Technologie |
+|--------|-------------|
+| Framework | Next.js 15 (App Router) |
+| UI | Material UI (MUI) v5 |
+| Graphiques | Recharts |
+| HTTP | Axios |
+| Conteneurisation | Docker |
+
+---
+
+## Prérequis
+
+- Docker Desktop installé
+- Backend Kounhany en cours d'exécution sur port 3000
+
+---
+
+## Démarrage rapide
+
+```bash
+# Depuis la racine du projet
+docker-compose up --build -d
+
+# Accéder au dashboard
+http://localhost:3001
+```
+
+### Identifiants par défaut
+
+```
+Utilisateur : admin
+Mot de passe : kounhany2024
+```
+
+---
+
+## Variables d'environnement
+
+Créer `frontend/.env.local` :
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_API_KEY=kounhany-secret-2024
+NEXT_PUBLIC_ADMIN_USER=admin
+NEXT_PUBLIC_ADMIN_PASSWORD=kounhany2024
+```
+
+---
+
+## Pages disponibles
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Dashboard Financier | `/` | KPIs, soldes, volumes, top clients |
+| Dashboard Système | `/` (toggle) | État services, métriques, intégrité |
+| Clients | `/clients` | Liste avec soldes inline, pagination |
+| Wallet client | `/clients/[id]/wallet` | Wallet complet + actions + historique |
+| Transactions | `/transactions` | Historique global + filtres + export CSV |
+
+---
+
+## Fonctionnalités
+
+### Dashboard
+- Toggle **Financier / Système** en haut à droite
+- **Financier** : KPIs (clients, actifs, transactions, volume), graphiques (activité 7j, répartition soldes, volume par type), top clients, transactions récentes
+- **Système** : état des services (Backend, Blnk, PostgreSQL, Redis), métriques transactionnelles, intégrité des données, informations système
+- Auto-refresh du dashboard système toutes les 30 secondes
+
+### Notifications
+- Icône cloche dans la TopBar avec badge rouge (non lus)
+- Onglets **Toutes / Financier / Système**
+- Max 5 alertes visibles, bouton "Voir toutes"
+- "Marquer tout comme lu" persisté en localStorage
+- Clic sur alerte avec `client_id` → navigation vers le wallet client
+
+### Clients
+- Tableau avec soldes Available/Blocked/Receivable inline (chargement asynchrone avec Skeleton)
+- Badge "Sans wallet" pour les clients sans wallet
+- Bouton **Détail** → popup avec infos client + soldes résumés
+- Bouton **Wallet** → navigation vers la page wallet complète
+- Bouton **Créer wallet** → pour les clients sans wallet
+- Bouton **Ajouter depuis SCIM** → dialog 2 étapes pour synchroniser un user IDP
+- Recherche par nom, email, ID
+- Pagination (5/10/25/50 par page)
+
+### Wallet client
+- 3 AccountCards : Disponible (vert), Bloqué (orange), Créances (rouge)
+- Statistiques détaillées (rechargé, bloqué, confirmé, dettes, dette nette)
+- Dropdown **Actions wallet** avec 5 opérations : Recharger, Bloquer, Confirmer, Dette Dolibarr, Paiement ext.
+- Historique complet des transactions avec statut
+- Dialog de confirmation avec référence et description optionnelles
+
+### Transactions
+- KPIs en haut : total, volume, taux succès, erreurs
+- Filtres : recherche texte, type, date début/fin
+- Export CSV des transactions filtrées
+- Pagination (10/15/25/50 par page)
+- Bouton **Détail** → popup avec toutes les informations
+- Cohérence visuelle avec la page clients
+
+---
+
+## Structure du projet
+
+```
+frontend/
+├── Dockerfile
+├── package.json
+├── .env.local
+├── app/
+│   ├── layout.js               Layout principal avec Sidebar + TopBar
+│   ├── page.js                 Dashboard (Financier + Système)
+│   ├── login/
+│   │   └── page.js             Page de connexion
+│   ├── clients/
+│   │   ├── page.js             Liste des clients
+│   │   └── [id]/
+│   │       └── wallet/
+│   │           └── page.js     Page wallet complet
+│   └── transactions/
+│       └── page.js             Historique des transactions
+├── components/
+│   ├── layout/
+│   │   ├── Sidebar.jsx         Navigation avec user info + logout
+│   │   ├── TopBar.jsx          Header avec notifications
+│   │   └── PageLoader.jsx      Barre de chargement entre pages
+│   ├── common/
+│   │   └── StatusBadge.jsx     Badge coloré par type de transaction
+│   ├── dashboard/
+│   │   ├── DashboardHeader.jsx Toggle Financier/Système
+│   │   ├── KpiCard.jsx         Carte KPI avec tendance
+│   │   ├── ActivityChart.jsx   Graphique activité 7 jours
+│   │   ├── BalancePieChart.jsx Donut répartition soldes
+│   │   ├── VolumeBarChart.jsx  Barres volume par type
+│   │   ├── SystemHealth.jsx    Santé du système
+│   │   ├── TopClients.jsx      Top 3 clients avec lien
+│   │   ├── RecentTransactions.jsx Dernières transactions
+│   │   ├── SystemDashboard.jsx Orchestration dashboard système
+│   │   └── system/
+│   │       ├── SystemKpis.jsx
+│   │       ├── ServicesStatus.jsx
+│   │       ├── TransactionMetrics.jsx
+│   │       ├── OperationsBreakdown.jsx
+│   │       ├── DataIntegrity.jsx
+│   │       └── SystemInfo.jsx
+│   ├── clients/
+│   │   ├── ClientsTable.jsx        Tableau avec pagination
+│   │   ├── ClientDetailDialog.jsx  Popup détail client
+│   │   └── AddWalletDialog.jsx     Dialog SCIM 2 étapes
+│   ├── wallet/
+│   │   ├── WalletHeader.jsx
+│   │   ├── AccountCards.jsx
+│   │   ├── WalletStats.jsx
+│   │   ├── WalletActions.jsx
+│   │   ├── TransactionTable.jsx
+│   │   └── ActionDialog.jsx
+│   └── transactions/
+│       ├── TransactionKpis.jsx
+│       ├── TransactionFilters.jsx
+│       └── TransactionDetailDialog.jsx
+├── lib/
+│   ├── api.js                  Fonctions API centralisées
+│   ├── auth.js                 Auth service (login/logout)
+│   └── alerts-context.js       Contexte global des alertes
+└── theme/
+    └── theme.js                Thème MUI (#FAC345, #212529)
+```
+
+---
+
+## Charte graphique
+
+| Élément | Valeur |
+|---------|--------|
+| Couleur principale | `#FAC345` (jaune Kounhany) |
+| Couleur texte | `#212529` (noir) |
+| Succès / Disponible | `#10B981` (vert) |
+| Avertissement / Bloqué | `#F59E0B` (orange) |
+| Erreur / Créances | `#EF4444` (rouge) |
+| Info | `#3B82F6` (bleu) |
+| Police | DM Sans |
+
+---
+
+## Authentification
+
+Auth basique avec localStorage. Identifiants configurables via variables d'environnement.
+
+> **Note** : L'intégration IDP réelle (Keycloak/Okta/Azure AD) est prévue en Phase 3. Le composant `AuthGuard` sera mis à jour pour vérifier les tokens JWT sans impact sur le reste du code.
+
+---
+
+## Roadmap
+
+| Phase | Statut | Contenu |
+|-------|--------|---------|
+| Phase 1 | ✅ Terminé | Dashboard, Clients, Wallets, Transactions, Notifications |
+| Phase 2 | 🔄 Planifié | Dolibarr UI, B2C CMI, Scoring client |
+| Phase 3 | ⏳ Planifié | IDP/SCIM réel, Paramètres système |

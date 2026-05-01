@@ -1,0 +1,9 @@
+<?php
+$dolibarr_main_url_root='https://dolibarr.kounhany.ma';
+$dolibarr_main_db_host='postgres';
+$dolibarr_main_db_port='5432';
+$dolibarr_main_db_name='dolibarr_db';
+$dolibarr_main_db_user='kounhany';
+$dolibarr_main_db_pass='kounhany2024';
+$dolibarr_main_db_type='pgsql';
+$dolibarr_main_prod='1';
