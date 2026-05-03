@@ -332,58 +332,6 @@ const kpisService = {
         }
     },
 
-    async getSystemInfo() {
-        const formatUptime = (seconds) => {
-            const h = Math.floor(seconds / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            const s = Math.floor(seconds % 60);
-            if (h > 0) return `${h}h ${m}m`;
-            if (m > 0) return `${m}m ${s}s`;
-            return `${s}s`;
-        };
-
-        const blnkHealth = await this._checkService(
-            `${process.env.BLNK_URL || 'http://blnk:5001'}/health`
-        );
-        const redisHealth = await this._checkRedis();
-        const dbHealth = await this._checkDatabase();
-
-        const env = process.env.APP_ENV || process.env.NODE_ENV || 'development';
-        const uptime = process.uptime();
-
-        return {
-            environment: env,
-            version: process.env.APP_VERSION || '1.0.0',
-            uptime_human: formatUptime(uptime),
-            uptime_seconds: Math.floor(uptime),
-            swagger_url: env !== 'production'
-                ? `${process.env.APP_URL || 'http://localhost:3000'}/api-docs`
-                : null,
-            services: {
-                backend: {
-                    name: 'Backend API',
-                    status: 'OK',
-                    detail: 'Node.js + Express',
-                },
-                blnk: {
-                    name: 'Blnk Ledger',
-                    status: blnkHealth.status,
-                    detail: blnkHealth.status === 'OK' ? 'Opérationnel' : 'Connexion échouée',
-                },
-                database: {
-                    name: 'PostgreSQL',
-                    status: dbHealth.status,
-                    detail: dbHealth.status === 'OK' ? 'Opérationnel' : 'Connexion échouée',
-                },
-                redis: {
-                    name: 'Redis',
-                    status: redisHealth.status,
-                    detail: redisHealth.status === 'OK' ? 'Opérationnel' : 'Connexion échouée',
-                },
-            },
-        };
-    },
-
     async _checkService(url) {
         try {
             const res = await fetch(url, { signal: AbortSignal.timeout(3000) });

@@ -59,3 +59,25 @@ exports.getAllOrders = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.confirmOrder = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await ordersService.confirmOrder(parseInt(id));
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+};
+
+exports.cancelOrder = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await ordersService.cancelOrder(parseInt(id));
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+};

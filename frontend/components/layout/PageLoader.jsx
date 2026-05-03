@@ -1,5 +1,5 @@
 'use client';
-import { Box, CircularProgress, LinearProgress } from '@mui/material';
+import { Box, LinearProgress } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 

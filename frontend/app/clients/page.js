@@ -87,6 +87,7 @@ export default function ClientsPage() {
 
   return (
     <Box>
+      {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>Clients</Typography>
         <Typography variant="body2" color="text.secondary">
@@ -97,14 +98,15 @@ export default function ClientsPage() {
 
       {error && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>{error}</Alert>}
 
-      <Card>
+      {/* Filtre recherche */}
+      <Card sx={{ mb: 2 }}>
         <CardContent sx={{ p: 2, pb: '16px !important' }}>
           <TextField
             placeholder="Rechercher par nom, email ou ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             size="small"
-            sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+            sx={{ width: { xs: '100%', sm: 320 } }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -113,7 +115,12 @@ export default function ClientsPage() {
               ),
             }}
           />
+        </CardContent>
+      </Card>
 
+      {/* Table */}
+      <Card sx={{ width: '100%', minHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column' }}>
+        <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 2 } }}>
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
               <CircularProgress sx={{ color: '#FAC345' }} />
@@ -125,8 +132,8 @@ export default function ClientsPage() {
               balancesLoading={balancesLoading}
               onDetail={(client) => setSelectedClient(client)}
               onWallet={(id) => router.push(`/clients/${id}/wallet`)}
+              onOrders={(id) => router.push(`/clients/${id}/orders`)}
               onCreateWallet={handleCreateWallet}
-              onDelete={handleDelete}
             />
           )}
         </CardContent>

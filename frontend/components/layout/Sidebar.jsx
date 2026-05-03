@@ -1,7 +1,7 @@
 'use client';
 import {
   Drawer, List, ListItem, ListItemButton, ListItemIcon,
-  ListItemText, Box, Typography, Divider, Chip, Avatar,
+  ListItemText, Box, Typography, Divider, Avatar,
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
@@ -10,13 +10,15 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { usePathname, useRouter } from 'next/navigation';
 import { authService } from '@/lib/auth';
-import { use, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 
 const DRAWER_WIDTH = 260;
 
 const menuItems = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { label: 'Clients', icon: <PeopleIcon />, path: '/clients' },
+  { label: 'Commandes', icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
   { label: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
 ];
 

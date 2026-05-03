@@ -9,9 +9,9 @@ export default function WalletStats({ stats }) {
     { label: 'Total rechargé', value: `${fmt(stats?.total_recharged)} MAD`, color: '#10B981' },
     { label: 'Total bloqué', value: `${fmt(stats?.total_blocked)} MAD`, color: '#F59E0B' },
     { label: 'Total confirmé', value: `${fmt(stats?.total_confirmed)} MAD`, color: '#3B82F6' },
-    { label: 'Dettes totales', value: `${fmt(stats?.total_debt)} MAD`, color: '#EF4444' },
+    { label: 'Créances encaissées', value: `${fmt(stats?.total_collected)} MAD`, color: '#10B981' },
     { label: 'Paiements ext.', value: `${fmt(stats?.total_ext_payment)} MAD`, color: '#10B981' },
-    { label: 'Dette nette', value: `${fmt(stats?.net_debt)} MAD`, color: stats?.net_debt > 0 ? '#EF4444' : '#10B981' },
+    { label: 'Créances en attente', value: `${fmt(stats?.net_receivable)} MAD`, color: stats?.net_receivable > 0 ? '#EF4444' : '#10B981' },
     { label: 'Transactions', value: fmtN(stats?.total_transactions), color: '#212529' },
     { label: 'Erreurs', value: fmtN(stats?.total_errors), color: stats?.total_errors > 0 ? '#EF4444' : '#10B981' },
   ];

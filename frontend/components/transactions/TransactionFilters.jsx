@@ -5,7 +5,6 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
-import FilterListIcon from '@mui/icons-material/FilterList';
 
 const TYPES = ['PAYMENT', 'BLOCK', 'CONFIRM', 'EXTERNAL_DEBT', 'EXTERNAL_PAYMENT'];
 

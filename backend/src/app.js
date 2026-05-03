@@ -14,6 +14,7 @@ const kpisRoutes = require('./routes/kpis.routes');
 const dolibarrRoutes = require('./routes/dolibarr.routes');
 const scimRoutes = require('./routes/scim.routes');
 const ordersRoutes = require('./routes/orders.routes');
+const logistiqueBilling = require('./jobs/logistique.billing');
 
 const app = express();
 

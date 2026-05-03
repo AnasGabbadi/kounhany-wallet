@@ -246,4 +246,40 @@ router.post('/external-debt', validate(v.externalDebt), walletController.externa
  */
 router.post('/external-payment', validate(v.externalPayment), walletController.externalPayment);
 
+/**
+ * @swagger
+ * /wallet/unblock:
+ *   post:
+ *     summary: Débloquer un montant réservé (annulation)
+ *     description: |
+ *       Restitue un montant bloqué vers le solde disponible.
+ *       - Blocked → Available
+ *       - Utilisé lors de l'annulation d'une commande FLEET
+ *     tags: [Wallet]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [client_id, amount]
+ *             properties:
+ *               client_id:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               reference:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Montant débloqué
+ *       422:
+ *         description: Montant bloqué insuffisant
+ */
+router.post('/unblock', validate(v.unblock), walletController.unblock);
+
 module.exports = router;

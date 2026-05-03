@@ -33,14 +33,12 @@ const dolibarrSync = {
 
   async syncPayments() {
     try {
-      const sinceMs = Date.now() - (parseInt(process.env.DOLIBARR_POLLING_INTERVAL) || 300000) - 60000;
-      const payments = await dolibarrService.getRecentPayments(sinceMs);
+      const res = await dolibarrService.getPaidInvoices();
+      if (res.length === 0) return;
+      console.log(`[Dolibarr Sync] ${res.length} facture(s) payée(s) trouvée(s)`);
 
-      if (payments.length === 0) return;
-      console.log(`[Dolibarr Sync] ${payments.length} paiement(s) trouvé(s)`);
-
-      for (const payment of payments) {
-        const ref = `DOL-PAY-${payment.id}`;
+      for (const invoice of res) {
+        const ref = `SYNC-PAY-${invoice.id}`;
 
         // Vérifier si déjà traité
         const existing = await pool.query(
@@ -49,29 +47,86 @@ const dolibarrSync = {
         );
         if (existing.rows.length > 0) continue;
 
-        // Récupérer la facture liée
-        const invoice = await dolibarrService.getInvoice(payment.fk_facture);
-        if (!invoice?.ref_client) continue;
+        if (!invoice.ref_client) continue;
 
-        // Trouver le client dans notre base
-        const client = await pool.query(
-          'SELECT * FROM clients WHERE client_id = $1',
-          [invoice.ref_client]
-        );
-        if (client.rows.length === 0) {
-          console.log(`[Dolibarr Sync] Client introuvable pour ref_client: ${invoice.ref_client}`);
+        // ─── CAS LOGISTIQUE — facture mensuelle groupée ───────────────
+        if (invoice.ref_client.startsWith('LOG-')) {
+          // ref_client = LOG-202605-39378756
+          // Extraire année et mois depuis la référence
+          const parts = invoice.ref_client.split('-');
+          const yearMonth = parts[1]; // "202605"
+          const year = parseInt(yearMonth.slice(0, 4));
+          const month = parseInt(yearMonth.slice(4, 6));
+
+          // Trouver le client via la fin de ref_client
+          const clientSuffix = parts[2]; // "39378756"
+          const clientResult = await pool.query(
+            `SELECT client_id FROM clients 
+     WHERE client_id LIKE $1`,
+            [`%${clientSuffix}`]
+          );
+
+          if (clientResult.rows.length === 0) {
+            console.log(`[Dolibarr Sync] Client introuvable pour: ${invoice.ref_client}`);
+            continue;
+          }
+
+          const clientId = clientResult.rows[0].client_id;
+
+          // Solder le Receivable
+          await walletService.externalDebt(
+            clientId,
+            parseFloat(invoice.total_ttc),
+            ref,
+            `Paiement Dolibarr — facture mensuelle ${invoice.ref}`
+          );
+
+          // Mettre à jour UNIQUEMENT les orders INVOICED du mois concerné → PAID
+          await pool.query(
+            `UPDATE orders 
+     SET status = 'PAID', updated_at = NOW()
+     WHERE client_id = $1
+       AND status = 'INVOICED'
+       AND order_type = 'LOGISTIQUE'
+       AND EXTRACT(YEAR FROM created_at) = $2
+       AND EXTRACT(MONTH FROM created_at) = $3`,
+            [clientId, year, month]
+          );
+
+          console.log(`[Dolibarr Sync] ✅ Facture mensuelle ${invoice.ref} — ${invoice.total_ttc} MAD → PAID`);
           continue;
         }
 
-        // Enregistrer le paiement dans notre wallet
-        await walletService.externalPayment(
-          client.rows[0].client_id,
-          parseFloat(payment.amount),
+        // ─── CAS FLEET — facture par commande ─────────────────────────
+        const orderRef = invoice.ref_client.replace(/^CONFIRM-/, '');
+
+        const order = await pool.query(
+          `SELECT o.*, c.client_id FROM orders o
+         JOIN clients c ON o.client_id = c.client_id
+         WHERE o.reference = $1 AND o.status = 'CONFIRMED'`,
+          [orderRef]
+        );
+
+        if (order.rows.length === 0) {
+          console.log(`[Dolibarr Sync] Order introuvable ou déjà PAID pour: ${invoice.ref_client}`);
+          continue;
+        }
+
+        const o = order.rows[0];
+
+        await walletService.externalDebt(
+          o.client_id,
+          parseFloat(invoice.total_ttc),
           ref,
           `Paiement Dolibarr — facture ${invoice.ref}`
         );
 
-        console.log(`[Dolibarr Sync] ✅ Paiement synchronisé: ${payment.id} — client: ${client.rows[0].name}`);
+        await pool.query(
+          `UPDATE orders SET status = 'PAID', updated_at = NOW() WHERE id = $1`,
+          [o.id]
+        );
+
+        console.log(`[Dolibarr Sync] ✅ Facture ${invoice.ref} payée — order ${invoice.ref_client} → PAID`);
       }
     } catch (err) {
       console.error('[Dolibarr Sync] Erreur sync:', err.message);

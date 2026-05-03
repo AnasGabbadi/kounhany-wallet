@@ -2,7 +2,6 @@
 import { Card, CardContent, Box, Typography, Skeleton } from '@mui/material';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
-import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 
 export default function KpiCard({ title, value, subtitle, icon, color = '#FAC345', loading, trend }) {
   const getTrendIcon = () => {

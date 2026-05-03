@@ -8,10 +8,13 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
 });
 
-pool.on('connect', () => console.log('PostgreSQL connected'));
+pool.on('connect', (client) => {
+  client.query("SET client_encoding = 'UTF8'");
+  console.log('PostgreSQL connected');
+});
 pool.on('error', (err) => console.error('PostgreSQL error:', err.message));
 
 module.exports = pool;

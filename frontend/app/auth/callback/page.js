@@ -19,7 +19,7 @@ function CallbackContent() {
       return;
     }
 
-    fetch('http://localhost:3000/auth/callback', {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),

@@ -70,18 +70,4 @@ router.get('/top-clients', kpisController.topClients);
  */
 router.get('/alerts', kpisController.alerts);
 
-/**
- * @swagger
- * /kpis/system-info:
- *   get:
- *     summary: Informations système et environnement
- *     tags: [KPIs]
- *     security:
- *       - ApiKeyAuth: []
- *     responses:
- *       200:
- *         description: Infos système retournées
- */
-router.get('/system-info', kpisController.systemInfo);
-
 module.exports = router;

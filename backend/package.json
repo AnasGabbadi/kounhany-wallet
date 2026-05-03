@@ -39,6 +39,9 @@
       "src/**/*.js",
       "!src/config/swagger.js",
       "!src/server.js"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^jwks-rsa$": "<rootDir>/tests/__mocks__/jwks-rsa.js"
+    }
   }
 }

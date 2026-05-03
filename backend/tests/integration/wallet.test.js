@@ -11,7 +11,9 @@ process.env.DB_NAME = 'kounhany_db';
 
 jest.mock('../../src/services/blnk.service');
 jest.mock('../../src/config/db');
+jest.mock('../../src/services/dolibarr.service');
 
+const dolibarrService = require('../../src/services/dolibarr.service');
 const blnkService = require('../../src/services/blnk.service');
 const pool = require('../../src/config/db');
 const app = require('../../src/app');
@@ -24,12 +26,16 @@ const mockWallet = {
   currency: 'MAD',
 };
 
+// ─── POST /wallet/check-available ─────────────────────────────────────────────
 describe('POST /wallet/check-available', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    dolibarrService.createInvoice = jest.fn().mockResolvedValue(1);
+    jest.clearAllMocks()
+  });
 
   test('doit retourner sufficient=true si solde suffisant', async () => {
     pool.query = jest.fn().mockResolvedValue({ rows: [mockWallet] });
-    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 50000 });
+    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 5000000 }); // 500 MAD
 
     const res = await request(app)
       .post('/wallet/check-available')
@@ -43,7 +49,7 @@ describe('POST /wallet/check-available', () => {
 
   test('doit retourner sufficient=false si solde insuffisant', async () => {
     pool.query = jest.fn().mockResolvedValue({ rows: [mockWallet] });
-    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 1000 });
+    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 10000 }); // 1 MAD
 
     const res = await request(app)
       .post('/wallet/check-available')
@@ -72,6 +78,7 @@ describe('POST /wallet/check-available', () => {
   });
 });
 
+// ─── POST /wallet/block ───────────────────────────────────────────────────────
 describe('POST /wallet/block', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -95,10 +102,10 @@ describe('POST /wallet/block', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
-    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 50000 });
+    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 5000000 }); // 500 MAD
     blnkService.createTransaction = jest.fn().mockResolvedValue({
       transaction_id: 'txn_test_001',
-      status: 'QUEUED',
+      status: 'APPLIED',
     });
 
     const res = await request(app)
@@ -120,6 +127,59 @@ describe('POST /wallet/block', () => {
   });
 });
 
+// ─── POST /wallet/unblock ─────────────────────────────────────────────────────
+describe('POST /wallet/unblock', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('doit retourner 422 si montant bloqué insuffisant', async () => {
+    pool.query = jest.fn().mockResolvedValue({ rows: [mockWallet] });
+    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 0 });
+
+    const res = await request(app)
+      .post('/wallet/unblock')
+      .set('x-api-key', 'test-api-key')
+      .send({ client_id: 'client_test_001', amount: 100 });
+
+    expect(res.status).toBe(422);
+  });
+
+  test('doit débloquer le montant — Blocked → Available', async () => {
+    pool.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [mockWallet] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 5000000 }); // 500 MAD
+    blnkService.createTransaction = jest.fn().mockResolvedValue({
+      transaction_id: 'txn_unblock_001',
+      status: 'APPLIED',
+    });
+
+    const res = await request(app)
+      .post('/wallet/unblock')
+      .set('x-api-key', 'test-api-key')
+      .send({ client_id: 'client_test_001', amount: 100, description: 'Annulation' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.transaction_id).toBe('txn_unblock_001');
+  });
+
+  test('doit retourner 400 si amount manquant', async () => {
+    const res = await request(app)
+      .post('/wallet/unblock')
+      .set('x-api-key', 'test-api-key')
+      .send({ client_id: 'client_test_001' });
+
+    expect(res.status).toBe(400);
+  });
+
+  test('doit retourner 401 sans API key', async () => {
+    const res = await request(app).post('/wallet/unblock').send({ client_id: 'client_test_001', amount: 100 });
+    expect(res.status).toBe(401);
+  });
+});
+
+// ─── POST /wallet/confirm ─────────────────────────────────────────────────────
 describe('POST /wallet/confirm', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -141,10 +201,10 @@ describe('POST /wallet/confirm', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
-    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 50000 });
+    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 5000000 });
     blnkService.createTransaction = jest.fn().mockResolvedValue({
       transaction_id: 'txn_confirm_001',
-      status: 'QUEUED',
+      status: 'APPLIED',
     });
 
     const res = await request(app)
@@ -157,6 +217,7 @@ describe('POST /wallet/confirm', () => {
   });
 });
 
+// ─── POST /wallet/pay ─────────────────────────────────────────────────────────
 describe('POST /wallet/pay', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -168,7 +229,7 @@ describe('POST /wallet/pay', () => {
 
     blnkService.createTransaction = jest.fn().mockResolvedValue({
       transaction_id: 'txn_pay_001',
-      status: 'QUEUED',
+      status: 'APPLIED',
     });
 
     const res = await request(app)
@@ -181,16 +242,9 @@ describe('POST /wallet/pay', () => {
   });
 
   test('doit retourner transaction existante si référence dupliquée (idempotency)', async () => {
-    const existingLog = {
-      id: 1,
-      reference: 'REF-001',
-      transaction_id: 'txn_existing',
-      type: 'PAYMENT',
-    };
-
     pool.query = jest.fn()
       .mockResolvedValueOnce({ rows: [mockWallet] })
-      .mockResolvedValueOnce({ rows: [existingLog] });
+      .mockResolvedValueOnce({ rows: [{ reference: 'REF-001', transaction_id: 'txn_existing' }] });
 
     blnkService.createTransaction = jest.fn();
 
@@ -205,19 +259,20 @@ describe('POST /wallet/pay', () => {
   });
 });
 
+// ─── GET /wallet/balance/:clientId ────────────────────────────────────────────
 describe('GET /wallet/balance/:clientId', () => {
   beforeEach(() => jest.clearAllMocks());
 
   test('doit retourner les soldes du client', async () => {
     pool.query = jest.fn().mockResolvedValue({ rows: [mockWallet] });
-    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 50000 });
+    blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 1000000 }); // 100 MAD
 
     const res = await request(app)
       .get('/wallet/balance/client_test_001')
       .set('x-api-key', 'test-api-key');
 
     expect(res.status).toBe(200);
-    expect(res.body.data.available).toBe(500);
+    expect(res.body.data.available).toBe(100);
     expect(res.body.data.currency).toBe('MAD');
   });
 
@@ -232,16 +287,19 @@ describe('GET /wallet/balance/:clientId', () => {
   });
 });
 
+// ─── GET /wallet/transactions/:clientId ───────────────────────────────────────
 describe('GET /wallet/transactions/:clientId', () => {
   beforeEach(() => jest.clearAllMocks());
 
   test('doit retourner les transactions du client', async () => {
     pool.query = jest.fn()
       .mockResolvedValueOnce({ rows: [mockWallet] })
-      .mockResolvedValueOnce({ rows: [
-        { id: 1, type: 'PAYMENT', amount: '500.00', reference: 'REF-001' },
-        { id: 2, type: 'BLOCK', amount: '100.00', reference: 'REF-002' },
-      ]});
+      .mockResolvedValueOnce({
+        rows: [
+          { id: 1, type: 'PAYMENT', amount: '500.00', reference: 'REF-001' },
+          { id: 2, type: 'BLOCK', amount: '100.00', reference: 'REF-002' },
+        ]
+      });
 
     const res = await request(app)
       .get('/wallet/transactions/client_test_001')
@@ -250,12 +308,26 @@ describe('GET /wallet/transactions/:clientId', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBe(2);
   });
+
+  test('doit retourner tableau vide si aucune transaction', async () => {
+    pool.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [mockWallet] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .get('/wallet/transactions/client_test_001')
+      .set('x-api-key', 'test-api-key');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(0);
+  });
 });
 
+// ─── POST /wallet/external-debt ───────────────────────────────────────────────
 describe('POST /wallet/external-debt', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('doit enregistrer une dette externe', async () => {
+  test('doit solder une créance — Receivable → @World', async () => {
     pool.query = jest.fn()
       .mockResolvedValueOnce({ rows: [mockWallet] })
       .mockResolvedValueOnce({ rows: [] })
@@ -263,7 +335,7 @@ describe('POST /wallet/external-debt', () => {
 
     blnkService.createTransaction = jest.fn().mockResolvedValue({
       transaction_id: 'txn_debt_001',
-      status: 'QUEUED',
+      status: 'APPLIED',
     });
 
     const res = await request(app)
@@ -273,7 +345,7 @@ describe('POST /wallet/external-debt', () => {
         client_id: 'client_test_001',
         amount: 200,
         reference: 'DOLIBARR-INV-001',
-        description: 'Facture Dolibarr',
+        description: 'Solde créance',
       });
 
     expect(res.status).toBe(200);
@@ -290,10 +362,11 @@ describe('POST /wallet/external-debt', () => {
   });
 });
 
+// ─── POST /wallet/external-payment ────────────────────────────────────────────
 describe('POST /wallet/external-payment', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('doit enregistrer un paiement externe', async () => {
+  test('doit créer une créance — @World → Receivable', async () => {
     pool.query = jest.fn()
       .mockResolvedValueOnce({ rows: [mockWallet] })
       .mockResolvedValueOnce({ rows: [] })
@@ -301,7 +374,7 @@ describe('POST /wallet/external-payment', () => {
 
     blnkService.createTransaction = jest.fn().mockResolvedValue({
       transaction_id: 'txn_extpay_001',
-      status: 'QUEUED',
+      status: 'APPLIED',
     });
 
     const res = await request(app)
@@ -311,10 +384,19 @@ describe('POST /wallet/external-payment', () => {
         client_id: 'client_test_001',
         amount: 200,
         reference: 'DOLIBARR-PAY-001',
-        description: 'Paiement Dolibarr',
+        description: 'Créance externe',
       });
 
     expect(res.status).toBe(200);
     expect(res.body.data.transaction_id).toBe('txn_extpay_001');
+  });
+
+  test('doit retourner 400 si reference manquante', async () => {
+    const res = await request(app)
+      .post('/wallet/external-payment')
+      .set('x-api-key', 'test-api-key')
+      .send({ client_id: 'client_test_001', amount: 200 });
+
+    expect(res.status).toBe(400);
   });
 });

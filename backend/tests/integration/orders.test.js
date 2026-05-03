@@ -40,6 +40,17 @@ const mockClient = {
   has_transactions: false,
 };
 
+const mockStats = {
+  total_transactions: '0',
+  total_recharged: '0',
+  total_blocked: '0',
+  total_confirmed: '0',
+  total_debt: '0',
+  total_ext_payment: '0',
+  total_errors: '0',
+  last_activity: null,
+};
+
 // ─── GET /clients ─────────────────────────────────────────────────────────────
 describe('GET /clients', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -84,8 +95,8 @@ describe('GET /clients/:clientId', () => {
 
   test('doit retourner le détail d un client', async () => {
     pool.query = jest.fn()
-      .mockResolvedValueOnce({ rows: [mockClient] })   // client query
-      .mockResolvedValueOnce({ rows: [mockWallet] });  // getClientWallet
+      .mockResolvedValueOnce({ rows: [mockClient] })
+      .mockResolvedValueOnce({ rows: [mockWallet] });
 
     const res = await request(app)
       .get('/clients/client_001')
@@ -126,20 +137,9 @@ describe('GET /clients/:clientId/wallet', () => {
 
   test('doit retourner le wallet complet du client', async () => {
     pool.query = jest.fn()
-      .mockResolvedValueOnce({ rows: [mockWallet] })  // wallet query
-      .mockResolvedValueOnce({ rows: [] })             // transactions
-      .mockResolvedValueOnce({
-        rows: [{               // stats
-          count: '0',
-          total_recharged: '0',
-          total_blocked: '0',
-          total_confirmed: '0',
-          total_debt: '0',
-          total_ext_payment: '0',
-          total_errors: '0',
-          last_activity: null,
-        }]
-      });
+      .mockResolvedValueOnce({ rows: [mockWallet] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [mockStats] });
 
     const res = await request(app)
       .get('/clients/client_001/wallet')
@@ -158,18 +158,13 @@ describe('GET /clients/:clientId/wallet', () => {
     pool.query = jest.fn()
       .mockResolvedValueOnce({ rows: [mockWallet] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [{
-          count: '3',
-          total_recharged: '10000',
-          total_blocked: '1500',
-          total_confirmed: '1500',
-          total_debt: '1500',
-          total_ext_payment: '0',
-          total_errors: '0',
-          last_activity: new Date(),
-        }]
-      });
+      .mockResolvedValueOnce({ rows: [{
+        ...mockStats,
+        total_recharged: '10000',
+        total_blocked: '1500',
+        total_confirmed: '1500',
+        total_debt: '1500',
+      }] });
 
     blnkService.getBalance = jest.fn().mockResolvedValue({ balance: 85000000 }); // 8500 MAD
 
@@ -184,33 +179,22 @@ describe('GET /clients/:clientId/wallet', () => {
   });
 
   test('doit retourner les transactions du client', async () => {
-    // Ajouter cette ligne
-    blnkService.getBalance = jest.fn().mockResolvedValue({
-      balance: 1000000,
-      credit_balance: 1000000,
-      debit_balance: 0,
-    });
-
     pool.query = jest.fn()
       .mockResolvedValueOnce({ rows: [mockWallet] })
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 1, type: 'PAYMENT', amount: '500.00', reference: 'REF-001', status: 'SUCCESS' },
-          { id: 2, type: 'BLOCK', amount: '100.00', reference: 'REF-002', status: 'SUCCESS' },
-        ]
-      })
-      .mockResolvedValueOnce({
-        rows: [{
-          total_transactions: '2',
-          total_recharged: '500',
-          total_blocked: '100',
-          total_confirmed: '0',
-          total_debt: '0',
-          total_ext_payment: '0',
-          total_errors: '0',
-          last_activity: new Date(),
-        }]
-      });
+      .mockResolvedValueOnce({ rows: [
+        { id: 1, type: 'PAYMENT', amount: '500.00', reference: 'REF-001', status: 'SUCCESS' },
+        { id: 2, type: 'BLOCK', amount: '100.00', reference: 'REF-002', status: 'SUCCESS' },
+      ]})
+      .mockResolvedValueOnce({ rows: [{
+        total_transactions: '2',   // ← nom correct du champ
+        total_recharged: '500',
+        total_blocked: '100',
+        total_confirmed: '0',
+        total_debt: '0',
+        total_ext_payment: '0',
+        total_errors: '0',
+        last_activity: new Date(),
+      }] });
 
     const res = await request(app)
       .get('/clients/client_001/wallet')

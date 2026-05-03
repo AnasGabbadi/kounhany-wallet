@@ -1,14 +1,18 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
   timeout: 10000,
 });
 
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('kounhany_access_token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      config.headers['x-api-key'] = process.env.NEXT_PUBLIC_API_KEY || '';
+    }
   }
   return config;
 });
@@ -40,6 +44,7 @@ export const walletApi = {
   pay: (data) => api.post('/wallet/pay', data),
   externalDebt: (data) => api.post('/wallet/external-debt', data),
   externalPayment: (data) => api.post('/wallet/external-payment', data),
+  unblock: (data) => api.post('/wallet/unblock', data),
 };
 
 export const dolibarrApi = {
@@ -53,6 +58,9 @@ export const ordersApi = {
   create: (data) => api.post('/orders', data),
   getByClient: (clientId, params) => api.get(`/orders/client/${clientId}`, { params }),
   getAll: (params) => api.get('/orders', { params }),
+  confirm: (id) => api.post(`/orders/${id}/confirm`),
+  cancel: (id) => api.post(`/orders/${id}/cancel`),
+  invoiceLogistique: () => api.post('/orders/logistique/invoice'),
 };
 
 export default api;

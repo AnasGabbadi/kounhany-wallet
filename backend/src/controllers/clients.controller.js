@@ -90,27 +90,24 @@ const clientsController = {
             created_at: wallet.created_at,
             accounts: {
               available: {
-                balance_id: wallet.available_balance_id,
-                balance: available.balance / 100,
-                credit_balance: available.credit_balance / 100,
-                debit_balance: available.debit_balance / 100,
+                balance: available.balance / 10000,
+                credit_balance: available.credit_balance / 10000,
+                debit_balance: available.debit_balance / 10000,
               },
               blocked: {
-                balance_id: wallet.blocked_balance_id,
-                balance: blocked.balance / 100,
-                credit_balance: blocked.credit_balance / 100,
-                debit_balance: blocked.debit_balance / 100,
+                balance: blocked.balance / 10000,
+                credit_balance: blocked.credit_balance / 10000,
+                debit_balance: blocked.debit_balance / 10000,
               },
               receivable: {
-                balance_id: wallet.receivable_balance_id,
-                balance: receivable.balance / 100,
-                credit_balance: receivable.credit_balance / 100,
-                debit_balance: receivable.debit_balance / 100,
+                balance: receivable.balance / 10000,
+                credit_balance: receivable.credit_balance / 10000,
+                debit_balance: receivable.debit_balance / 10000,
               },
             },
             summary: {
-              total_assets: (available.balance + blocked.balance + receivable.balance) / 100,
-              total_encours: (blocked.balance + receivable.balance) / 100,
+              total_assets: (available.balance + blocked.balance + receivable.balance) / 10000,
+              total_encours: (blocked.balance + receivable.balance) / 10000,
             },
           },
           stats: {
@@ -118,11 +115,11 @@ const clientsController = {
             total_recharged: parseFloat(stats.total_recharged),
             total_blocked: parseFloat(stats.total_blocked),
             total_confirmed: parseFloat(stats.total_confirmed),
-            total_debt: parseFloat(stats.total_debt),
+            total_collected: parseFloat(stats.total_debt),      // créances encaissées
             total_ext_payment: parseFloat(stats.total_ext_payment),
             total_errors: parseInt(stats.total_errors),
             last_activity: stats.last_activity,
-            net_debt: parseFloat(stats.total_debt) - parseFloat(stats.total_ext_payment),
+            net_receivable: parseFloat(stats.total_confirmed) - parseFloat(stats.total_debt), // créances en attente
           },
           transactions: txResult.rows,
         },

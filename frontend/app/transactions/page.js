@@ -45,7 +45,7 @@ export default function TransactionsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(8);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
   const [selectedTx, setSelectedTx] = useState(null);
 
   useEffect(() => {
@@ -89,6 +89,7 @@ export default function TransactionsPage() {
 
   return (
     <Box>
+      {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>Transactions</Typography>
         <Typography variant="body2" color="text.secondary">
@@ -98,9 +99,11 @@ export default function TransactionsPage() {
 
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
+      {/* KPIs */}
       <TransactionKpis transactions={filtered} loading={loading} />
 
-      <Card>
+      {/* Filtres */}
+      <Card sx={{ mb: 2 }}>
         <CardContent sx={{ p: 2, pb: '16px !important' }}>
           <TransactionFilters
             search={search} setSearch={setSearch}
@@ -111,6 +114,12 @@ export default function TransactionsPage() {
             filteredCount={filtered.length}
             totalCount={transactions.length}
           />
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      <Card sx={{ width: '100%', minHeight: 'calc(100vh - 380px)', display: 'flex', flexDirection: 'column' }}>
+        <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 2 } }}>
 
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -118,8 +127,8 @@ export default function TransactionsPage() {
             </Box>
           ) : (
             <>
-              <TableContainer>
-                <Table>
+              <TableContainer sx={{ flex: 1 }}>
+                <Table size="small">
                   <TableHead>
                     <TableRow>
                       {['Client', 'Type', 'Montant', 'Description', 'Statut', 'Date', 'Actions'].map((h) => (
@@ -132,7 +141,7 @@ export default function TransactionsPage() {
                   <TableBody>
                     {paginated.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                        <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary', border: 'none' }}>
                           Aucune transaction trouvée
                         </TableCell>
                       </TableRow>
@@ -162,7 +171,7 @@ export default function TransactionsPage() {
                             <StatusBadge status={tx.type} />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                               {fmt(tx.amount)} MAD
                             </Typography>
                           </TableCell>
@@ -199,7 +208,11 @@ export default function TransactionsPage() {
                               variant="outlined"
                               startIcon={<ReceiptIcon sx={{ fontSize: '14px !important' }} />}
                               onClick={() => setSelectedTx(tx)}
-                              sx={{ fontSize: '0.72rem', py: 0.3 }}
+                              sx={{
+                                fontSize: '0.72rem', py: 0.3,
+                                borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary',
+                                '&:hover': { borderColor: 'rgba(0,0,0,0.4)', bgcolor: 'rgba(0,0,0,0.04)' },
+                              }}
                             >
                               Détail
                             </Button>
@@ -218,8 +231,8 @@ export default function TransactionsPage() {
                 onPageChange={(_, p) => setPage(p)}
                 rowsPerPage={rowsPerPage}
                 onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value)); setPage(0); }}
-                rowsPerPageOptions={[8, 15, 25, 50]}
-                labelRowsPerPage="Lignes par page"
+                rowsPerPageOptions={[10, 25, 50]}
+                labelRowsPerPage="Lignes"
                 labelDisplayedRows={({ from, to, count }) => `${from}-${to} sur ${count}`}
               />
             </>

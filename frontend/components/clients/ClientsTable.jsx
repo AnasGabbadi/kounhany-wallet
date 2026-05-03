@@ -6,9 +6,8 @@ import {
 } from '@mui/material';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import PersonIcon from '@mui/icons-material/Person';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import { useState, useEffect } from 'react';
+import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0 });
 
@@ -20,7 +19,7 @@ const BalanceChip = ({ value, color }) => (
   />
 );
 
-export default function ClientsTable({ clients, balances, balancesLoading, onDetail, onWallet, onCreateWallet, onDelete }) {
+export default function ClientsTable({ clients, balances, balancesLoading, onDetail, onWallet, onOrders }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(8);
 
@@ -29,8 +28,8 @@ export default function ClientsTable({ clients, balances, balancesLoading, onDet
   const paginated = (clients || []).slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   return (
-    <>
-      <TableContainer>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <TableContainer sx={{ flex: 1 }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -123,39 +122,59 @@ export default function ClientsTable({ clients, balances, balancesLoading, onDet
                     </TableCell>
 
                     <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.8 }}>
+                      <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+
+                        {/* Détail — gris outlined */}
                         <Button
                           size="small"
                           variant="outlined"
                           startIcon={<PersonIcon sx={{ fontSize: '14px !important' }} />}
                           onClick={() => onDetail(client)}
-                          sx={{ fontSize: '0.72rem', py: 0.3 }}
+                          sx={{
+                            fontSize: '0.72rem', py: 0.3,
+                            borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary',
+                            '&:hover': { borderColor: 'rgba(0,0,0,0.4)', bgcolor: 'rgba(0,0,0,0.04)' }
+                          }}
                         >
                           Détail
                         </Button>
+
+                        {/* Wallet — jaune contained */}
                         {isActive && bal && (
                           <Button
                             size="small"
                             variant="contained"
                             startIcon={<AccountBalanceWalletIcon sx={{ fontSize: '14px !important' }} />}
                             onClick={() => onWallet(client.client_id)}
-                            sx={{ fontSize: '0.72rem', py: 0.3, bgcolor: '#FAC345', color: '#212529', '&:hover': { bgcolor: '#E0A820' } }}
+                            sx={{
+                              fontSize: '0.72rem', py: 0.3,
+                              bgcolor: '#FAC345', color: '#212529',
+                              boxShadow: 'none',
+                              '&:hover': { bgcolor: '#E0A820', boxShadow: 'none' }
+                            }}
                           >
                             Wallet
                           </Button>
                         )}
-                        {isActive && !bal && (
+
+                        {/* Commandes */}
+                        {isActive && bal && (
                           <Button
                             size="small"
-                            variant="outlined"
-                            color="warning"
-                            startIcon={<AddIcon sx={{ fontSize: '14px !important' }} />}
-                            onClick={() => onCreateWallet(client)}
-                            sx={{ fontSize: '0.72rem', py: 0.3 }}
+                            variant="contained"
+                            startIcon={<ShoppingBagOutlinedIcon sx={{ fontSize: '14px !important' }} />}
+                            onClick={() => onOrders(client.client_id)}
+                            sx={{
+                              fontSize: '0.72rem', py: 0.3,
+                              bgcolor: '#212529', color: '#FAC345',
+                              boxShadow: 'none',
+                              '&:hover': { bgcolor: '#4e3f1b', boxShadow: 'none' }
+                            }}
                           >
-                            Créer wallet
+                            Commandes
                           </Button>
                         )}
+
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -177,6 +196,6 @@ export default function ClientsTable({ clients, balances, balancesLoading, onDet
         labelRowsPerPage="Lignes par page"
         labelDisplayedRows={({ from, to, count }) => `${from}-${to} sur ${count}`}
       />
-    </>
+    </Box>
   );
 }

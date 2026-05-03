@@ -26,7 +26,7 @@ const walletService = {
   async checkAvailable(clientId, amount) {
     const wallet = await this.getClientWallet(clientId);
     const balance = await blnkService.getBalance(wallet.available_balance_id);
-    const available = balance.balance / 100;
+    const available = balance.balance / 10000; // Blnk stocke avec precision=100, montant * 100 → diviser par 10000
     return {
       sufficient: available >= amount,
       available,
@@ -55,7 +55,7 @@ const walletService = {
     }
 
     const transaction = await blnkService.createTransaction({
-      amount: amount * 100,
+      amount: amount * 100, // Blnk applique sa propre precision=100 → amount * 100 correct
       reference: ref,
       description: description || 'Block — réservation',
       source: wallet.available_balance_id,
@@ -73,7 +73,7 @@ const walletService = {
 
     // Vérifier que le montant bloqué est suffisant
     const blockedBalance = await blnkService.getBalance(wallet.blocked_balance_id);
-    const blocked = blockedBalance.balance / 100;
+    const blocked = blockedBalance.balance / 10000; // Blnk stocke avec precision=100, montant * 100 → diviser par 10000
     if (blocked < amount) {
       const err = new Error(`Montant bloqué insuffisant — bloqué: ${blocked} MAD, demandé: ${amount} MAD`);
       err.status = 422;
@@ -141,7 +141,7 @@ const walletService = {
     return transaction;
   },
 
-  // EXTERNAL DEBT — dette Dolibarr
+  // EXTERNAL DEBT — solder une créance (Receivable → @World)
   async externalDebt(clientId, amount, reference, description) {
     const wallet = await this.getClientWallet(clientId);
     const ref = reference || uuidv4();
@@ -152,7 +152,7 @@ const walletService = {
     const transaction = await blnkService.createTransaction({
       amount: amount * 100,
       reference: ref,
-      description: description || 'Dolibarr — dette externe',
+      description: description || 'Dolibarr — solde créance',
       source: wallet.receivable_balance_id,
       destination: '@World',
       meta_data: { client_id: clientId, type: 'external_debt' },
@@ -162,7 +162,7 @@ const walletService = {
     return transaction;
   },
 
-  // EXTERNAL PAYMENT — paiement Dolibarr
+  // EXTERNAL PAYMENT — paiement Dolibarr entrant (@World → Receivable)
   async externalPayment(clientId, amount, reference, description) {
     const wallet = await this.getClientWallet(clientId);
     const ref = reference || uuidv4();
@@ -208,9 +208,9 @@ const walletService = {
     return {
       client_id: clientId,
       currency: wallet.currency,
-      available: available.balance / 100,
-      blocked: blocked.balance / 100,
-      receivable: receivable.balance / 100,
+      available: available.balance / 10000,   // Blnk: precision=100 × amount×100 → /10000
+      blocked: blocked.balance / 10000,
+      receivable: receivable.balance / 10000,
     };
   },
 
@@ -246,6 +246,63 @@ const walletService = {
     } catch (err) {
       console.error('[LOG ERROR]', err.message);
     }
+  },
+
+  // UNBLOCK — annulation, rend l'argent bloqué au disponible
+  async unblock(clientId, amount, reference, description) {
+    const wallet = await this.getClientWallet(clientId);
+
+    const blockedBalance = await blnkService.getBalance(wallet.blocked_balance_id);
+    const blocked = blockedBalance.balance / 10000;
+    if (blocked < amount) {
+      const err = new Error(`Montant bloqué insuffisant — bloqué: ${blocked} MAD, demandé: ${amount} MAD`);
+      err.status = 422; throw err;
+    }
+
+    const ref = reference || uuidv4();
+    const existing = await this._findTransactionByReference(ref);
+    if (existing) return existing;
+
+    const transaction = await blnkService.createTransaction({
+      amount: amount * 100,
+      reference: ref,
+      description: description || 'Unblock — annulation',
+      source: wallet.blocked_balance_id,
+      destination: wallet.available_balance_id,
+      meta_data: { client_id: clientId, type: 'unblock' },
+    });
+
+    await this._log({ clientId, transactionId: transaction.transaction_id, type: 'UNBLOCK', amount, reference: ref, description });
+    return transaction;
+  },
+
+  // DIRECT CONFIRM — Available → Receivable (pour LOGISTIQUE)
+  async directConfirm(clientId, amount, reference, description) {
+    // Vérifier Available
+    const check = await this.checkAvailable(clientId, amount);
+    if (!check.sufficient) {
+      const err = new Error(`Solde insuffisant — disponible: ${check.available} MAD, demandé: ${amount} MAD`);
+      err.status = 422;
+      throw err;
+    }
+
+    const wallet = await this.getClientWallet(clientId);
+    const ref = reference || uuidv4();
+
+    const existing = await this._findTransactionByReference(ref);
+    if (existing) return existing;
+
+    const transaction = await blnkService.createTransaction({
+      amount: amount * 100,
+      reference: ref,
+      description: description || 'Confirm direct — logistique',
+      source: wallet.available_balance_id,      // ← Available
+      destination: wallet.receivable_balance_id, // ← Receivable directement
+      meta_data: { client_id: clientId, type: 'direct_confirm' },
+    });
+
+    await this._log({ clientId, transactionId: transaction.transaction_id, type: 'CONFIRM', amount, reference: ref, description });
+    return transaction;
   },
 };
 

@@ -4,11 +4,11 @@ import {
   Button, TextField, Alert, CircularProgress, Typography,
 } from '@mui/material';
 
-// ← ACTIONS déplacé ici depuis WalletActions.jsx
 export const ACTIONS = [
   { key: 'pay', label: 'Recharger', color: 'success', variant: 'contained', desc: 'Ajouter des fonds au compte disponible' },
   { key: 'block', label: 'Bloquer', color: 'warning', variant: 'contained', desc: 'Réserver un montant du compte disponible' },
   { key: 'confirm', label: 'Confirmer', color: 'primary', variant: 'contained', desc: 'Consommer un montant bloqué' },
+  { key: 'unblock', label: 'Débloquer', color: 'warning', variant: 'outlined', desc: 'Restituer un montant bloqué vers le disponible' },
   { key: 'external-debt', label: 'Dette Dolibarr', color: 'error', variant: 'outlined', desc: 'Enregistrer une facture externe' },
   { key: 'external-payment', label: 'Paiement ext.', color: 'success', variant: 'outlined', desc: 'Enregistrer un paiement externe' },
 ];

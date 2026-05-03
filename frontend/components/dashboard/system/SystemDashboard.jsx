@@ -11,8 +11,8 @@ import DataIntegrity from './DataIntegrity';
 import SystemInfo from './SystemInfo';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
-  headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'kounhany-secret-2024' },
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY },
 });
 
 export default function SystemDashboard() {
@@ -26,7 +26,6 @@ export default function SystemDashboard() {
     try {
       const [ovRes, sysRes] = await Promise.all([
         api.get('/kpis/overview?period=all'),
-        api.get('/kpis/system-info'),
       ]);
       setOverview(ovRes.data.data);
       setSystemInfo(sysRes.data.data);

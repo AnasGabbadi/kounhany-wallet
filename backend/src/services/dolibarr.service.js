@@ -43,7 +43,8 @@ const dolibarrService = {
     };
 
     const res = await dolibarrApi.post('/invoices', invoice);
-    console.log(`[Dolibarr] Facture créée — ID: ${res.data} pour client ${clientId}`);
+    const invoiceId = res.data;  // ← ajouter cette ligne
+    console.log(`[Dolibarr] Facture créée — ID: ${invoiceId} pour client ${clientId}`);
     try {
       await dolibarrApi.post(`/invoices/${invoiceId}/validate`, {
         idwarehouse: 0,
@@ -134,7 +135,7 @@ const dolibarrService = {
         date_echeance: inv.date_echeance || inv.date_lim_reglement || null,
         total_ht: parseFloat(inv.total_ht || 0),
         total_ttc: parseFloat(inv.total_ttc || 0),
-        status: inv.statut === '1' ? 'paid' : inv.statut === '0' ? 'unpaid' : 'draft',
+        status: inv.statut === '2' ? 'paid' : inv.statut === '1' ? 'unpaid' : 'draft',
         lines: inv.lines || [],
       }));
     } catch (err) {
@@ -168,6 +169,27 @@ const dolibarrService = {
     });
     console.log(`[Dolibarr] Tiers créé — ID: ${res.data} pour client ${clientId}`);
     return res.data;
+  },
+
+  async getPaidInvoices() {
+    try {
+      const res = await dolibarrApi.get('/invoices', {
+        params: {
+          sortfield: 't.rowid',
+          sortorder: 'DESC',
+          limit: 100,
+        },
+      });
+
+      let invoices = res.data || [];
+      if (!Array.isArray(invoices)) invoices = Object.values(invoices);
+
+      // Filtrer uniquement les factures payées (statut=2, paye=1)
+      return invoices.filter(inv => inv.statut === '2' && inv.paye === '1');
+    } catch (err) {
+      if (err.response?.status === 404) return [];
+      throw err;
+    }
   },
 };
 

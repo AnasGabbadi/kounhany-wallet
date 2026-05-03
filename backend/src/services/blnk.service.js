@@ -43,7 +43,7 @@ const blnkService = {
       source: data.source,
       destination: data.destination,
       allow_overdraft: data.allow_overdraft || true,
-      skip_queue: data.skip_queue || false,
+      skip_queue: true,
       meta_data: data.meta_data || {},
     });
     return response.data;

@@ -40,4 +40,11 @@ const externalPayment = Joi.object({
   description: Joi.string().optional(),
 });
 
-module.exports = { checkAvailable, block, confirm, pay, externalDebt, externalPayment };
+const unblock = Joi.object({
+  client_id: Joi.string().required(),
+  amount: Joi.number().positive().required(),
+  reference: Joi.string().optional(),
+  description: Joi.string().optional(),
+});
+
+module.exports = { checkAvailable, block, confirm, pay, externalDebt, externalPayment, unblock };

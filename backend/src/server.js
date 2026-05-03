@@ -2,6 +2,7 @@ require('dotenv').config();
 const app = require('./app');
 const dolibarrSync = require('./services/dolibarr.sync');
 const platformService = require('./services/platform.service');
+const logistiqueBilling = require('./jobs/logistique.billing');
 
 const PORT = process.env.PORT || 3000;
 
@@ -14,6 +15,7 @@ const startServer = async () => {
   });
   await platformService.init();
   await dolibarrSync.start();
+  logistiqueBilling.start();
 };
 
 startServer();

@@ -66,8 +66,7 @@ class OrdersService {
       newOrder.status = 'BLOCKED';
 
     } else if (order_type === 'LOGISTIQUE') {
-      // CONFIRM direct → Available → Receivable + facture Dolibarr auto
-      walletResult = await walletService.confirm(
+      walletResult = await walletService.directConfirm( 
         clientId,
         amount,
         reference,
@@ -116,7 +115,7 @@ class OrdersService {
     let idx = 2;
 
     if (order_type) { query += ` AND order_type = $${idx++}`; params.push(order_type); }
-    if (status)     { query += ` AND status = $${idx++}`;     params.push(status); }
+    if (status) { query += ` AND status = $${idx++}`; params.push(status); }
 
     query += ` ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`;
     params.push(limit, (page - 1) * limit);
@@ -151,7 +150,7 @@ class OrdersService {
     let idx = 1;
 
     if (order_type) { query += ` AND o.order_type = $${idx++}`; params.push(order_type); }
-    if (status)     { query += ` AND o.status = $${idx++}`;     params.push(status); }
+    if (status) { query += ` AND o.status = $${idx++}`; params.push(status); }
 
     query += ` ORDER BY o.created_at DESC LIMIT $${idx++} OFFSET $${idx++}`;
     params.push(limit, (page - 1) * limit);
@@ -163,7 +162,7 @@ class OrdersService {
     const countParams = [];
     let countIdx = 1;
     if (order_type) { countQuery += ` AND order_type = $${countIdx++}`; countParams.push(order_type); }
-    if (status)     { countQuery += ` AND status = $${countIdx++}`;     countParams.push(status); }
+    if (status) { countQuery += ` AND status = $${countIdx++}`; countParams.push(status); }
 
     const countResult = await db.query(countQuery, countParams);
 
@@ -176,6 +175,81 @@ class OrdersService {
         pages: Math.ceil(countResult.rows[0].count / limit),
       },
     };
+  }
+
+  async confirmOrder(orderId) {
+    // Récupérer la commande
+    const order = await db.query(
+      'SELECT * FROM orders WHERE id = $1',
+      [orderId]
+    );
+    if (order.rows.length === 0) {
+      const err = new Error('Commande introuvable');
+      err.status = 404;
+      throw err;
+    }
+
+    const o = order.rows[0];
+
+    if (o.status !== 'BLOCKED') {
+      const err = new Error(`Impossible de confirmer — statut actuel: ${o.status}`);
+      err.status = 422;
+      throw err;
+    }
+
+    // CONFIRM Blnk : Blocked → Receivable + facture Dolibarr
+    const confirmRef = `CONFIRM-${o.reference}`;
+    await walletService.confirm(
+      o.client_id,
+      parseFloat(o.amount),
+      confirmRef,
+      o.description || `Confirmation commande ${o.reference}`
+    );
+
+    // Mettre à jour l'order
+    const updated = await db.query(
+      `UPDATE orders 
+     SET status = 'CONFIRMED', confirmed_at = NOW(), updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+      [orderId]
+    );
+
+    return updated.rows[0];
+  }
+
+  async cancelOrder(orderId) {
+    const order = await db.query(
+      'SELECT * FROM orders WHERE id = $1', [orderId]
+    );
+    if (order.rows.length === 0) {
+      const err = new Error('Commande introuvable');
+      err.status = 404; throw err;
+    }
+
+    const o = order.rows[0];
+
+    if (o.status !== 'BLOCKED') {
+      const err = new Error(`Impossible d'annuler — statut actuel: ${o.status}`);
+      err.status = 422; throw err;
+    }
+
+    // Blnk : Blocked → Available (remboursement)
+    const cancelRef = `CANCEL-${o.reference}`;
+    await walletService.unblock(
+      o.client_id,
+      parseFloat(o.amount),
+      cancelRef,
+      `Annulation commande ${o.reference}`
+    );
+
+    const updated = await db.query(
+      `UPDATE orders 
+     SET status = 'CANCELLED', cancelled_at = NOW(), updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+      [orderId]
+    );
+    return updated.rows[0];
   }
 }
 

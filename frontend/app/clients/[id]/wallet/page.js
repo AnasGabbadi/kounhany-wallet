@@ -70,6 +70,7 @@ export default function WalletPage({ params }) {
       if (dialog === 'block') await walletApi.block(data);
       else if (dialog === 'confirm') await walletApi.confirm(data);
       else if (dialog === 'pay') await walletApi.pay(data);
+      else if (dialog === 'unblock') await walletApi.unblock(data);
       else if (dialog === 'external-debt') await walletApi.externalDebt({ ...data, reference: form.reference });
       else if (dialog === 'external-payment') await walletApi.externalPayment({ ...data, reference: form.reference });
 

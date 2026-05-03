@@ -1,7 +1,7 @@
-const AUTHENTIK_URL = process.env.NEXT_PUBLIC_AUTHENTIK_URL || 'http://localhost:9000';
+const AUTHENTIK_URL = process.env.NEXT_PUBLIC_AUTHENTIK_URL;
 const CLIENT_ID = process.env.NEXT_PUBLIC_AUTHENTIK_CLIENT_ID;
-const REDIRECT_URI = process.env.NEXT_PUBLIC_AUTHENTIK_REDIRECT_URI || 'http://localhost:3001/auth/callback';
-const APP_SLUG = process.env.NEXT_PUBLIC_AUTHENTIK_APP_SLUG || 'kounhany-wallet-admin';
+const REDIRECT_URI = process.env.NEXT_PUBLIC_AUTHENTIK_REDIRECT_URI;
+const APP_SLUG = process.env.NEXT_PUBLIC_AUTHENTIK_APP_SLUG;
 
 export const authService = {
 
@@ -23,7 +23,7 @@ export const authService = {
 async exchangeCode(code) {
   console.log('[Auth] Début exchangeCode, code:', code?.substring(0, 10));
   
-  const res = await fetch('http://localhost:3000/auth/callback', {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
@@ -57,7 +57,7 @@ async exchangeCode(code) {
     // Logout Authentik
     const params = new URLSearchParams({
       id_token_hint: idToken || '',
-      post_logout_redirect_uri: 'http://localhost:3001/login',
+      post_logout_redirect_uri: `${process.env.NEXT_PUBLIC_API_URL_FRONTEND}/login`,
     });
     window.location.href = `${AUTHENTIK_URL}/application/o/${APP_SLUG}/end-session/?${params.toString()}`;
   },

@@ -1,11 +1,23 @@
-const authMiddleware = require('../../src/middlewares/auth.middleware');
+// Mock avant tous les requires pour éviter les erreurs ES modules
+jest.mock('jwks-rsa', () => jest.fn(() => ({
+  getSigningKey: jest.fn((kid, cb) => cb(null, { getPublicKey: () => 'mock-public-key' })),
+})));
+
+jest.mock('jsonwebtoken', () => ({
+  verify: jest.fn(),
+}));
+
+process.env.API_KEY = 'test-api-key';
+process.env.AUTHENTIK_URL = 'http://authentik:9000';
+process.env.AUTHENTIK_APP_SLUG = 'kounhany-wallet-admin';
+
+const jwtMiddleware = require('../../src/middlewares/jwt.middleware');
 const errorMiddleware = require('../../src/middlewares/error.middleware');
 const validate = require('../../src/middlewares/validate.middleware');
 const Joi = require('joi');
 
-process.env.API_KEY = 'test-api-key';
-
-describe('Auth Middleware', () => {
+// ─── JWT Middleware — x-api-key ───────────────────────────────────────────────
+describe('JWT Middleware — x-api-key', () => {
   let req, res, next;
 
   beforeEach(() => {
@@ -17,26 +29,27 @@ describe('Auth Middleware', () => {
     next = jest.fn();
   });
 
-  test('doit retourner 401 si pas de API key', () => {
-    authMiddleware(req, res, next);
+  test('doit retourner 401 si pas de x-api-key ni Authorization', () => {
+    jwtMiddleware(req, res, next);
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
-  test('doit retourner 401 si API key incorrecte', () => {
-    req.headers['x-api-key'] = 'wrong-key';
-    authMiddleware(req, res, next);
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  test('doit appeler next() si API key correcte', () => {
+  test('doit appeler next() si x-api-key correcte', () => {
     req.headers['x-api-key'] = 'test-api-key';
-    authMiddleware(req, res, next);
+    jwtMiddleware(req, res, next);
     expect(next).toHaveBeenCalled();
+  });
+
+  test('doit retourner 401 si x-api-key incorrecte', () => {
+    req.headers['x-api-key'] = 'wrong-key';
+    jwtMiddleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
   });
 });
 
+// ─── Error Middleware ─────────────────────────────────────────────────────────
 describe('Error Middleware', () => {
   let req, res, next;
 
@@ -53,10 +66,10 @@ describe('Error Middleware', () => {
     const err = new Error('Erreur interne');
     errorMiddleware(err, req, res, next);
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: false,
       message: 'Erreur interne',
-    });
+    }));
   });
 
   test('doit retourner le status de l erreur', () => {
@@ -65,8 +78,15 @@ describe('Error Middleware', () => {
     errorMiddleware(err, req, res, next);
     expect(res.status).toHaveBeenCalledWith(404);
   });
+
+  test('doit retourner 500 si status non défini', () => {
+    const err = new Error('Erreur sans status');
+    errorMiddleware(err, req, res, next);
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
 });
 
+// ─── Validate Middleware ──────────────────────────────────────────────────────
 describe('Validate Middleware', () => {
   let req, res, next;
 
@@ -94,5 +114,31 @@ describe('Validate Middleware', () => {
     req.body = { amount: 100 };
     middleware(req, res, next);
     expect(next).toHaveBeenCalled();
+  });
+
+  test('doit retourner les détails de validation', () => {
+    const schema = Joi.object({
+      client_id: Joi.string().required(),
+      amount: Joi.number().positive().required(),
+    });
+    const middleware = validate(schema);
+    req.body = { client_id: 'test' }; // amount manquant
+    middleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+    }));
+  });
+
+  test('doit retourner 400 si champ requis manquant', () => {
+    const schema = Joi.object({
+      client_id: Joi.string().required(),
+      amount: Joi.number().positive().required(),
+    });
+    const middleware = validate(schema);
+    req.body = {}; // tout manquant
+    middleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(next).not.toHaveBeenCalled();
   });
 });

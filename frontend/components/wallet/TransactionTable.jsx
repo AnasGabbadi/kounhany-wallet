@@ -14,6 +14,7 @@ import PaymentIcon from '@mui/icons-material/Payment';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useState } from 'react';
 import StatusBadge from '@/components/common/StatusBadge';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
 
@@ -21,6 +22,7 @@ const ACTIONS = [
   { key: 'pay', label: 'Recharger le wallet', desc: 'Ajouter des fonds au compte disponible', icon: <AddCircleOutlineIcon fontSize="small" />, color: '#10B981' },
   { key: 'block', label: 'Bloquer un montant', desc: 'Réserver du compte disponible', icon: <BlockIcon fontSize="small" />, color: '#F59E0B' },
   { key: 'confirm', label: 'Confirmer un blocage', desc: 'Consommer un montant bloqué', icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#3B82F6' },
+  { key: 'unblock', label: 'Débloquer un montant', desc: 'Restituer un montant bloqué vers le disponible', icon: <LockOpenIcon fontSize="small" />, color: '#F59E0B' },
   { key: 'external-debt', label: 'Dette Dolibarr', desc: 'Enregistrer une facture externe', icon: <ReceiptLongIcon fontSize="small" />, color: '#EF4444' },
   { key: 'external-payment', label: 'Paiement Dolibarr', desc: 'Enregistrer un paiement externe', icon: <PaymentIcon fontSize="small" />, color: '#10B981' },
 ];

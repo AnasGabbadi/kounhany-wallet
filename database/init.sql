@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS orders (
   description TEXT,
   reference VARCHAR(255) UNIQUE NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
-    CHECK (status IN ('PENDING', 'BLOCKED', 'CONFIRMED', 'CANCELLED', 'PAID')),
+    CHECK (status IN ('PENDING', 'BLOCKED', 'CONFIRMED', 'INVOICED', 'CANCELLED', 'PAID')),
   metadata JSONB DEFAULT '{}',
   blnk_transaction_id VARCHAR(255),
   dolibarr_invoice_id VARCHAR(255),

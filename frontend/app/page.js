@@ -17,8 +17,8 @@ import { clientsApi, walletApi } from '@/lib/api';
 import { useAlerts } from '@/lib/alerts-context';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
-  headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'kounhany-secret-2024' },
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY},
 });
 
 const fmt  = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });

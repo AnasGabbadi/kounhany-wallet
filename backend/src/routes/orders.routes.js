@@ -128,4 +128,103 @@ router.get('/client/:clientId', ordersController.getClientOrders);
  */
 router.get('/', ordersController.getAllOrders);
 
+/**
+ * @swagger
+ * /orders/logistique/invoice:
+ *   post:
+ *     summary: Générer les factures mensuelles LOGISTIQUE manuellement
+ *     tags: [Orders]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Factures générées
+ */
+router.post('/logistique/invoice', async (req, res, next) => {
+  try {
+    const logistiqueBilling = require('../jobs/logistique.billing');
+    await logistiqueBilling.generateMonthlyInvoices();
+    res.json({ success: true, message: 'Facturation mensuelle lancée' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /orders/{id}/confirm:
+ *   post:
+ *     summary: Confirmer une commande FLEET
+ *     description: |
+ *       Confirme une commande FLEET en statut BLOCKED.
+ *       - Déplace le montant : Blocked → Receivable
+ *       - Crée une facture dans Dolibarr automatiquement
+ *       - Met à jour le statut de la commande → CONFIRMED
+ *     tags: [Orders]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la commande à confirmer
+ *     responses:
+ *       200:
+ *         description: Commande confirmée
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     status:
+ *                       type: string
+ *                       example: CONFIRMED
+ *                     confirmed_at:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Commande introuvable
+ *       422:
+ *         description: Commande non BLOCKED
+ */
+router.post('/:id/confirm', ordersController.confirmOrder);
+
+/**
+ * @swagger
+ * /orders/{id}/cancel:
+ *   post:
+ *     summary: Annuler une commande FLEET
+ *     description: |
+ *       Annule une commande FLEET en statut BLOCKED.
+ *       - Restitue le montant : Blocked → Available
+ *       - Met à jour le statut → CANCELLED
+ *       - Aucune facture Dolibarr créée
+ *     tags: [Orders]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Commande annulée
+ *       404:
+ *         description: Commande introuvable
+ *       422:
+ *         description: Commande non BLOCKED
+ */
+router.post('/:id/cancel', ordersController.cancelOrder);
+
 module.exports = router;

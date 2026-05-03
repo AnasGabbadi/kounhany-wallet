@@ -65,6 +65,14 @@ const walletController = {
             res.json({ success: true, data: result });
         } catch (err) { next(err); }
     },
+
+    async unblock(req, res, next) {
+        try {
+            const { client_id, amount, reference, description } = req.body;
+            const result = await walletService.unblock(client_id, amount, reference, description);
+            res.json({ success: true, data: result });
+        } catch (err) { next(err); }
+    },
 };
 
 module.exports = walletController;

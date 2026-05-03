@@ -30,13 +30,6 @@ const kpisController = {
             res.json({ success: true, data: result });
         } catch (err) { next(err); }
     },
-
-    async systemInfo(req, res, next) {
-        try {
-            const result = await kpisService.getSystemInfo();
-            res.json({ success: true, data: result });
-        } catch (err) { next(err); }
-    },
 };
 
 module.exports = kpisController;
