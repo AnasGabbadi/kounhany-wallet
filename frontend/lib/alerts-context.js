@@ -7,7 +7,6 @@ const AlertsContext = createContext({
   markAllRead: () => {},
   unreadCount: 0,
   financialAlerts: [],
-  systemAlerts: [],
 });
 
 const STORAGE_KEY = 'kounhany_read_alerts';
@@ -41,7 +40,7 @@ export function AlertsProvider({ children }) {
   }, []);
 
   const setAlerts = useCallback((newAlerts) => {
-    setAlertsState(newAlerts);
+    setAlertsState(Array.isArray(newAlerts) ? newAlerts : []); // ← protection undefined
   }, []);
 
   const markAllRead = useCallback(() => {
@@ -53,18 +52,23 @@ export function AlertsProvider({ children }) {
     });
   }, [alerts]);
 
+  const safeAlerts = Array.isArray(alerts) ? alerts : [];
+
   const unreadCount = mounted
-    ? alerts.filter((alert) => !readKeys.has(alertKey(alert))).length
+    ? safeAlerts.filter((alert) => !readKeys.has(alertKey(alert))).length
     : 0;
 
-  const financialAlerts = alerts.filter((a) => a.category === 'financial');
-  const systemAlerts = alerts.filter((a) => a.category === 'system');
+  const financialAlerts = safeAlerts.filter((a) => a.category === 'financial');
 
   return (
     <AlertsContext.Provider value={{
-      alerts, setAlerts, markAllRead,
-      unreadCount, readKeys, alertKey,
-      financialAlerts, systemAlerts,
+      alerts: safeAlerts,
+      setAlerts,
+      markAllRead,
+      unreadCount,
+      readKeys,
+      alertKey,
+      financialAlerts,
     }}>
       {children}
     </AlertsContext.Provider>

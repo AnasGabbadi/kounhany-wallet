@@ -22,6 +22,7 @@ const pageTitles = {
   '/': 'Dashboard',
   '/clients': 'Gestion des clients',
   '/transactions': 'Historique des transactions',
+  '/orders': 'Commandes',
 };
 
 const alertConfig = (type) => ({
@@ -38,7 +39,7 @@ export default function TopBar({ onMenuClick }) {
   const pathname = usePathname();
   const router = useRouter();
   const title = pageTitles[pathname] || 'Kounhany Wallet';
-  const { alerts, markAllRead, unreadCount, financialAlerts, systemAlerts } = useAlerts();
+  const { alerts, markAllRead, unreadCount, financialAlerts } = useAlerts();
 
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
@@ -53,6 +54,9 @@ export default function TopBar({ onMenuClick }) {
 
   if (!mounted) return null;
 
+  const safeAlerts = Array.isArray(alerts) ? alerts : [];
+  const safeFinancialAlerts = Array.isArray(financialAlerts) ? financialAlerts : [];
+
   const handleLogout = () => {
     authService.logout();
     router.push('/login');
@@ -63,12 +67,7 @@ export default function TopBar({ onMenuClick }) {
     markAllRead();
   };
 
-  const tabAlerts = notifTab === 'financial'
-    ? financialAlerts
-    : notifTab === 'system'
-      ? systemAlerts
-      : alerts;
-
+  const tabAlerts = notifTab === 'financial' ? safeFinancialAlerts : safeAlerts;
   const displayed = tabAlerts.slice(0, NOTIF_LIMIT);
   const hasMore = tabAlerts.length > NOTIF_LIMIT;
 
@@ -124,21 +123,20 @@ export default function TopBar({ onMenuClick }) {
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                 Notifications
               </Typography>
-              {alerts.length > 0 && (
+              {safeAlerts.length > 0 && (
                 <Chip
-                  label={`${alerts.length} alerte${alerts.length > 1 ? 's' : ''}`}
+                  label={`${safeAlerts.length} alerte${safeAlerts.length > 1 ? 's' : ''}`}
                   size="small"
                   sx={{ bgcolor: '#FEF3C7', color: '#D97706', fontWeight: 700, fontSize: '0.7rem' }}
                 />
               )}
             </Box>
 
-            {/* Onglets */}
+            {/* Onglets — seulement Toutes et Financier */}
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               {[
-                { key: 'all', label: `Toutes (${alerts.length})` },
-                { key: 'financial', label: `Financier (${financialAlerts.length})` },
-                { key: 'system', label: `Système (${systemAlerts.length})` },
+                { key: 'all', label: `Toutes (${safeAlerts.length})` },
+                { key: 'financial', label: `Financier (${safeFinancialAlerts.length})` },
               ].map((tab) => (
                 <Box
                   key={tab.key}
@@ -205,7 +203,7 @@ export default function TopBar({ onMenuClick }) {
           </Box>
 
           {/* Footer */}
-          {alerts.length > 0 && (
+          {safeAlerts.length > 0 && (
             <Box sx={{ borderTop: '1px solid rgba(0,0,0,0.08)' }}>
               {hasMore && (
                 <Box sx={{
@@ -251,7 +249,7 @@ export default function TopBar({ onMenuClick }) {
             cursor: 'pointer',
           }}
         >
-          {user?.user?.charAt(0).toUpperCase() || 'A'}
+          {user?.preferred_username?.charAt(0).toUpperCase() || user?.name?.charAt(0).toUpperCase() || 'A'}
         </Avatar>
 
         <Menu
@@ -264,7 +262,9 @@ export default function TopBar({ onMenuClick }) {
         >
           <MenuItem disabled sx={{ opacity: '1 !important' }}>
             <Box>
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>{user?.user}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {user?.preferred_username || user?.name || 'Administrateur'}
+              </Typography>
               <Typography variant="caption" color="text.secondary">Administrateur</Typography>
             </Box>
           </MenuItem>

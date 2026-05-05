@@ -11,7 +11,7 @@ export const authService = {
       client_id: CLIENT_ID,
       redirect_uri: REDIRECT_URI,
       response_type: 'code',
-      scope: 'openid profile email',
+      scope: 'openid profile email groups',
       state: crypto.randomUUID(),
     });
 

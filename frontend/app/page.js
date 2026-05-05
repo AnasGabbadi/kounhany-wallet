@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Grid, Box, Alert, LinearProgress } from '@mui/material';
-import axios from 'axios';
+
 import DashboardHeader from '@/components/dashboard/financier/DashboardHeader';
 import KpiCard from '@/components/dashboard/financier/KpiCard';
 import BalancePieChart from '@/components/dashboard/financier/BalancePieChart';
@@ -12,15 +12,11 @@ import PeopleIcon from '@mui/icons-material/People';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import { clientsApi, walletApi } from '@/lib/api';
+import api, { clientsApi, walletApi } from '@/lib/api';
 import { useAlerts } from '@/lib/alerts-context';
 
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
-  headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY },
-});
 
-const fmt  = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
+const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
 const fmtN = (n) => Number(n || 0).toLocaleString('fr-FR');
 
 export default function Dashboard() {
@@ -42,9 +38,9 @@ export default function Dashboard() {
           clientsApi.list(),
         ]);
 
-        setOverview(ovRes.data.data);
-        setTopClients(topRes.data.data);
-        setAlerts(alertsRes.data.data);
+        setOverview(ovRes.data);
+        setTopClients(topRes.data);
+        setAlerts(alertsRes.data);
 
         const clients = clientsRes.data || [];
         const txAll = await Promise.all(

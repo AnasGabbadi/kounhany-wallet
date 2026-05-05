@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
-  basePath: '/wallet',
-  assetPrefix: '/wallet',
+  ...(process.env.NODE_ENV === 'production' && {
+    basePath: '/wallet',
+    assetPrefix: '/wallet',
+  }),
 };
 
 module.exports = nextConfig;

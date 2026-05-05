@@ -8,7 +8,7 @@ const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigit
 
 const LIMIT = 5;
 
-export default function RecentTransactions({ transactions }) {
+export default function RecentTransactions({ transactions = [] }) {
   const router = useRouter();
   const displayed = transactions.slice(0, LIMIT);
 

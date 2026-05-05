@@ -7,7 +7,7 @@ const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigit
 
 const LIMIT = 5;
 
-export default function TopClients({ clients }) {
+export default function TopClients({ clients = [] }) {
   const router = useRouter();
   const displayed = clients.slice(0, LIMIT);
 

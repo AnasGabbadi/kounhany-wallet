@@ -48,11 +48,15 @@ const jwtMiddleware = (req, res, next) => {
   jwt.verify(token, getSigningKey, {
     algorithms: ['RS256'],
     audience: process.env.AUTHENTIK_CLIENT_ID,
-    issuer: `${process.env.AUTHENTIK_ISSUER}/application/o/${process.env.AUTHENTIK_APP_SLUG}/`,
+    issuer: process.env.AUTHENTIK_ISSUER,
   }, (err, decoded) => {
     if (err) {
-      console.error('[JWT] Token invalide:', err.message);
-      return res.status(401).json({ success: false, message: 'Unauthorized — Token invalide' });
+      const parts = token.split('.');
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+    console.log('[JWT] Issuer dans le token:', payload.iss);
+    console.log('[JWT] Issuer attendu:', process.env.AUTHENTIK_ISSUER);
+    console.error('[JWT] Token invalide:', err.message);
+    return res.status(401).json({ success: false, message: 'Unauthorized — Token invalide' });
     }
 
     // ← Vérifier que l'user est dans le groupe Wallet Admins

@@ -41,10 +41,12 @@ function CallbackContent() {
           // ← Décoder et sauvegarder les infos user
           try {
             const base64 = data.data.access_token.split('.')[1];
-            const decoded = JSON.parse(atob(base64.replace(/-/g, '+').replace(/_/g, '/')));
+            const padded = base64 + '=='.slice(0, (4 - base64.length % 4) % 4);
+            const decoded = JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
             localStorage.setItem('kounhany_user', JSON.stringify(decoded));
           } catch (e) {
             console.error('Erreur décodage token:', e);
+            localStorage.setItem('kounhany_user', JSON.stringify({}));
           }
 
           router.push('/');
