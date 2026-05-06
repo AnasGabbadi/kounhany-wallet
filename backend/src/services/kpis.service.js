@@ -6,50 +6,39 @@ const kpisService = {
     async getOverview(period = 'all') {
         const dateFilter = this._getDateFilter(period);
 
-        // Totaux transactions
-        const txStats = await pool.query(`
-            SELECT
-                COUNT(*) as total_transactions,
-                COUNT(CASE WHEN type = 'PAYMENT' THEN 1 END) as total_payments,
-                COUNT(CASE WHEN type = 'BLOCK' THEN 1 END) as total_blocks,
-                COUNT(CASE WHEN type = 'CONFIRM' THEN 1 END) as total_confirms,
-                COUNT(CASE WHEN type = 'EXTERNAL_DEBT' THEN 1 END) as total_debts,
-                COUNT(CASE WHEN type = 'EXTERNAL_PAYMENT' THEN 1 END) as total_ext_payments,
-                COUNT(CASE WHEN status = 'ERROR' THEN 1 END) as total_errors,
-                COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount::numeric ELSE 0 END), 0) as volume_payments,
-                COALESCE(SUM(CASE WHEN type = 'BLOCK' THEN amount::numeric ELSE 0 END), 0) as volume_blocks,
-                COALESCE(SUM(CASE WHEN type = 'CONFIRM' THEN amount::numeric ELSE 0 END), 0) as volume_confirms,
-                COALESCE(SUM(CASE WHEN type = 'EXTERNAL_DEBT' THEN amount::numeric ELSE 0 END), 0) as volume_debts,
-                COALESCE(SUM(amount::numeric), 0) as volume_total
-            FROM transaction_logs
-            ${dateFilter}
-        `);
+        // Paralléliser les 3 queries DB
+        const [txStats, clientStats, wallets] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COUNT(*) as total_transactions,
+                    COUNT(CASE WHEN type = 'PAYMENT' THEN 1 END) as total_payments,
+                    COUNT(CASE WHEN type = 'BLOCK' THEN 1 END) as total_blocks,
+                    COUNT(CASE WHEN type = 'CONFIRM' THEN 1 END) as total_confirms,
+                    COUNT(CASE WHEN type = 'EXTERNAL_DEBT' THEN 1 END) as total_debts,
+                    COUNT(CASE WHEN type = 'EXTERNAL_PAYMENT' THEN 1 END) as total_ext_payments,
+                    COUNT(CASE WHEN status = 'ERROR' THEN 1 END) as total_errors,
+                    COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount::numeric ELSE 0 END), 0) as volume_payments,
+                    COALESCE(SUM(CASE WHEN type = 'BLOCK' THEN amount::numeric ELSE 0 END), 0) as volume_blocks,
+                    COALESCE(SUM(CASE WHEN type = 'CONFIRM' THEN amount::numeric ELSE 0 END), 0) as volume_confirms,
+                    COALESCE(SUM(CASE WHEN type = 'EXTERNAL_DEBT' THEN amount::numeric ELSE 0 END), 0) as volume_debts,
+                    COALESCE(SUM(amount::numeric), 0) as volume_total
+                FROM transaction_logs
+                ${dateFilter}
+            `),
+            pool.query(`
+                SELECT
+                    COUNT(*) as total_clients,
+                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as new_this_week,
+                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as new_this_month
+                FROM clients
+            `),
+            pool.query(`
+                SELECT available_balance_id, blocked_balance_id, receivable_balance_id
+                FROM client_wallets
+            `),
+        ]);
 
-        // Nombre de clients
-        const clientStats = await pool.query(`
-      SELECT
-        COUNT(*) as total_clients,
-        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as new_this_week,
-        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as new_this_month
-      FROM clients
-    `);
-
-        // Soldes globaux depuis nos logs
-        const balanceStats = await pool.query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount
-                         WHEN type IN ('BLOCK', 'CONFIRM', 'EXTERNAL_DEBT') THEN -amount
-                         ELSE 0 END), 0) as net_flow
-      FROM transaction_logs
-      ${dateFilter}
-    `);
-
-        // Soldes réels depuis Blnk via client_wallets
-        const wallets = await pool.query(`
-      SELECT available_balance_id, blocked_balance_id, receivable_balance_id
-      FROM client_wallets
-    `);
-
+        // Soldes réels depuis Blnk — tous en parallèle
         let totalAvailable = 0, totalBlocked = 0, totalReceivable = 0;
 
         await Promise.all(wallets.rows.map(async (w) => {
@@ -108,13 +97,13 @@ const kpisService = {
     async getTransactionsTrend(days = 7) {
         const result = await pool.query(`
             SELECT
-            DATE(created_at) as date,
-            COUNT(*) as total,
-            COUNT(CASE WHEN type = 'PAYMENT' THEN 1 END) as payments,
-            COUNT(CASE WHEN type = 'BLOCK' THEN 1 END) as blocks,
-            COUNT(CASE WHEN type = 'CONFIRM' THEN 1 END) as confirms,
-            COUNT(CASE WHEN type = 'EXTERNAL_DEBT' THEN 1 END) as debts,
-            COALESCE(SUM(amount::numeric), 0) as volume
+                DATE(created_at) as date,
+                COUNT(*) as total,
+                COUNT(CASE WHEN type = 'PAYMENT' THEN 1 END) as payments,
+                COUNT(CASE WHEN type = 'BLOCK' THEN 1 END) as blocks,
+                COUNT(CASE WHEN type = 'CONFIRM' THEN 1 END) as confirms,
+                COUNT(CASE WHEN type = 'EXTERNAL_DEBT' THEN 1 END) as debts,
+                COALESCE(SUM(amount::numeric), 0) as volume
             FROM transaction_logs
             WHERE created_at >= NOW() - INTERVAL '${days} days'
             GROUP BY DATE(created_at)
@@ -134,22 +123,22 @@ const kpisService = {
 
     async getTopClients() {
         const result = await pool.query(`
-      SELECT
-        c.client_id,
-        c.name,
-        c.email,
-        COUNT(tl.id) as total_transactions,
-        COALESCE(SUM(tl.amount), 0) as total_volume,
-        COALESCE(SUM(CASE WHEN tl.type = 'PAYMENT' THEN tl.amount ELSE 0 END), 0) as total_recharged,
-        COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount ELSE 0 END), 0) as total_debt,
-        COUNT(CASE WHEN tl.status = 'ERROR' THEN 1 END) as total_errors,
-        MAX(tl.created_at) as last_activity
-      FROM clients c
-      LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
-      GROUP BY c.client_id, c.name, c.email
-      ORDER BY total_volume DESC
-      LIMIT 10
-    `);
+            SELECT
+                c.client_id,
+                c.name,
+                c.email,
+                COUNT(tl.id) as total_transactions,
+                COALESCE(SUM(tl.amount), 0) as total_volume,
+                COALESCE(SUM(CASE WHEN tl.type = 'PAYMENT' THEN tl.amount ELSE 0 END), 0) as total_recharged,
+                COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount ELSE 0 END), 0) as total_debt,
+                COUNT(CASE WHEN tl.status = 'ERROR' THEN 1 END) as total_errors,
+                MAX(tl.created_at) as last_activity
+            FROM clients c
+            LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
+            GROUP BY c.client_id, c.name, c.email
+            ORDER BY total_volume DESC
+            LIMIT 10
+        `);
 
         return result.rows.map((r) => ({
             client_id: r.client_id,
@@ -169,14 +158,46 @@ const kpisService = {
 
         // ── FINANCIER ─────────────────────────────────────────
 
-        // Clients avec erreurs récentes
-        const errorsResult = await pool.query(`
-    SELECT client_id, COUNT(*) as error_count
-    FROM transaction_logs
-    WHERE status = 'ERROR' AND created_at >= NOW() - INTERVAL '24 hours'
-    GROUP BY client_id
-    HAVING COUNT(*) > 0
-  `);
+        // Toutes les queries DB en parallèle
+        const [errorsResult, debtsResult, zeroBalanceResult, inactivityResult] = await Promise.all([
+            pool.query(`
+                SELECT client_id, COUNT(*) as error_count
+                FROM transaction_logs
+                WHERE status = 'ERROR' AND created_at >= NOW() - INTERVAL '24 hours'
+                GROUP BY client_id
+                HAVING COUNT(*) > 0
+            `),
+            pool.query(`
+                SELECT
+                    c.client_id, c.name,
+                    COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount::numeric ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_PAYMENT' THEN tl.amount::numeric ELSE 0 END), 0) as net_debt
+                FROM clients c
+                LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
+                GROUP BY c.client_id, c.name
+                HAVING (
+                    COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount::numeric ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_PAYMENT' THEN tl.amount::numeric ELSE 0 END), 0)
+                ) > 1000
+            `),
+            pool.query(`
+                SELECT c.client_id, c.name,
+                    cw.available_balance_id,
+                    COALESCE(SUM(CASE WHEN tl.type = 'BLOCK' THEN tl.amount::numeric ELSE 0 END), 0) as total_blocked
+                FROM clients c
+                JOIN client_wallets cw ON c.client_id = cw.client_id
+                LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
+                GROUP BY c.client_id, c.name, cw.available_balance_id
+                HAVING COALESCE(SUM(CASE WHEN tl.type = 'BLOCK' THEN tl.amount::numeric ELSE 0 END), 0) > 0
+            `),
+            pool.query(`
+                SELECT COUNT(*) as recent_tx
+                FROM transaction_logs
+                WHERE created_at >= NOW() - INTERVAL '24 hours'
+            `),
+        ]);
+
+        // Erreurs récentes
         errorsResult.rows.forEach((r) => {
             alerts.push({
                 category: 'financial',
@@ -188,20 +209,7 @@ const kpisService = {
             });
         });
 
-        // Clients avec dettes élevées
-        const debtsResult = await pool.query(`
-    SELECT
-      c.client_id, c.name,
-      COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount::numeric ELSE 0 END), 0) -
-      COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_PAYMENT' THEN tl.amount::numeric ELSE 0 END), 0) as net_debt
-    FROM clients c
-    LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
-    GROUP BY c.client_id, c.name
-    HAVING (
-      COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount::numeric ELSE 0 END), 0) -
-      COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_PAYMENT' THEN tl.amount::numeric ELSE 0 END), 0)
-    ) > 1000
-  `);
+        // Dettes élevées
         debtsResult.rows.forEach((r) => {
             alerts.push({
                 category: 'financial',
@@ -213,43 +221,24 @@ const kpisService = {
             });
         });
 
-        // Clients avec solde disponible à zéro mais encours actif
-        const zeroBalanceResult = await pool.query(`
-    SELECT c.client_id, c.name,
-      COALESCE(SUM(CASE WHEN tl.type = 'BLOCK' THEN tl.amount::numeric ELSE 0 END), 0) as total_blocked
-    FROM clients c
-    LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
-    GROUP BY c.client_id, c.name
-    HAVING COALESCE(SUM(CASE WHEN tl.type = 'BLOCK' THEN tl.amount::numeric ELSE 0 END), 0) > 0
-  `);
-        for (const r of zeroBalanceResult.rows) {
+        // Solde zéro avec encours — appels Blnk en parallèle (available_balance_id déjà dans la query)
+        await Promise.all(zeroBalanceResult.rows.map(async (r) => {
             try {
-                const wallet = await pool.query(
-                    'SELECT available_balance_id FROM client_wallets WHERE client_id = $1',
-                    [r.client_id]
-                );
-                if (wallet.rows.length > 0) {
-                    const balance = await this._getBlnkBalance(wallet.rows[0].available_balance_id);
-                    if (balance === 0 && parseFloat(r.total_blocked) > 0) {
-                        alerts.push({
-                            category: 'financial',
-                            type: 'warning',
-                            severity: 'medium',
-                            message: `Solde disponible à zéro avec ${parseFloat(r.total_blocked).toLocaleString('fr-FR')} MAD bloqué pour ${r.name}`,
-                            client_id: r.client_id,
-                            created_at: new Date(),
-                        });
-                    }
+                const balance = await this._getBlnkBalance(r.available_balance_id);
+                if (balance === 0 && parseFloat(r.total_blocked) > 0) {
+                    alerts.push({
+                        category: 'financial',
+                        type: 'warning',
+                        severity: 'medium',
+                        message: `Solde disponible à zéro avec ${parseFloat(r.total_blocked).toLocaleString('fr-FR')} MAD bloqué pour ${r.name}`,
+                        client_id: r.client_id,
+                        created_at: new Date(),
+                    });
                 }
             } catch { }
-        }
+        }));
 
         // Inactivité 24h
-        const inactivityResult = await pool.query(`
-    SELECT COUNT(*) as recent_tx
-    FROM transaction_logs
-    WHERE created_at >= NOW() - INTERVAL '24 hours'
-  `);
         if (parseInt(inactivityResult.rows[0].recent_tx) === 0) {
             alerts.push({
                 category: 'financial',
@@ -263,10 +252,19 @@ const kpisService = {
 
         // ── SYSTÈME ───────────────────────────────────────────
 
-        // Vérification Blnk
-        const blnkHealth = await this._checkService(
-            `${process.env.BLNK_URL || 'http://blnk:5001'}/health`
-        );
+        // Health checks en parallèle
+        const [blnkHealth, dbHealth, errorRateResult] = await Promise.all([
+            this._checkService(`${process.env.BLNK_URL || 'http://blnk:5001'}/health`),
+            this._checkDatabase(),
+            pool.query(`
+                SELECT
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN status = 'ERROR' THEN 1 END) as errors
+                FROM transaction_logs
+                WHERE created_at >= NOW() - INTERVAL '1 hour'
+            `),
+        ]);
+
         if (blnkHealth.status !== 'OK') {
             alerts.push({
                 category: 'system',
@@ -278,8 +276,6 @@ const kpisService = {
             });
         }
 
-        // Vérification base de données
-        const dbHealth = await this._checkDatabase();
         if (dbHealth.status !== 'OK') {
             alerts.push({
                 category: 'system',
@@ -291,14 +287,6 @@ const kpisService = {
             });
         }
 
-        // Taux d'erreur élevé
-        const errorRateResult = await pool.query(`
-    SELECT
-      COUNT(*) as total,
-      COUNT(CASE WHEN status = 'ERROR' THEN 1 END) as errors
-    FROM transaction_logs
-    WHERE created_at >= NOW() - INTERVAL '1 hour'
-  `);
         const total = parseInt(errorRateResult.rows[0].total);
         const errors = parseInt(errorRateResult.rows[0].errors);
         if (total > 0 && (errors / total) > 0.1) {
@@ -317,7 +305,6 @@ const kpisService = {
 
     async _getBlnkBalance(balanceId) {
         try {
-            const blnkService = require('./blnk.service');
             const balance = await blnkService.getBalance(balanceId);
             return balance.balance / 100;
         } catch { return 0; }
@@ -334,37 +321,21 @@ const kpisService = {
 
     async _checkService(url) {
         try {
-            const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+            const res = await fetch(url, { signal: AbortSignal.timeout(1000) });
             return { status: res.ok ? 'OK' : 'ERROR' };
         } catch (err) {
-            console.error('[Service Health Check]', url, err.message);
             return { status: 'ERROR' };
         }
     },
 
     async _checkDatabase() {
-        const start = Date.now();
         try {
             await pool.query('SELECT 1');
             return { status: 'OK' };
         } catch (err) {
-            // Log interne seulement — jamais retourné au client
             console.error('[DB Health Check]', err.message);
             return { status: 'ERROR' };
         }
-    },
-
-    async _checkRedis() {
-        const blnk = await this._checkService(
-            `${process.env.BLNK_URL || 'http://blnk:5001'}/health`
-        );
-        return {
-            status: blnk.status,
-            detail: blnk.status === 'OK'
-                ? 'Opérationnel — géré par Blnk'
-                : 'Vérifier le service Blnk',
-            response_ms: blnk.response_ms,
-        };
     },
 };
 
