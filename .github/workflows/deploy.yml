@@ -25,9 +25,9 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      - name: Run unit tests only
+      - name: Run tests
         working-directory: backend
-        run: npm test -- --testPathIgnorePatterns="integration" --forceExit
+        run: npm test
 
   deploy:
     name: Deploy
