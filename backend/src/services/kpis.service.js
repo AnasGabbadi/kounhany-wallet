@@ -1,12 +1,14 @@
 const pool = require('../config/db');
 const blnkService = require('./blnk.service');
+const redis = require('../config/redis');
+
+const CACHE_TTL = 30;
 
 const kpisService = {
 
     async getOverview(period = 'all') {
         const dateFilter = this._getDateFilter(period);
 
-        // Paralléliser les 3 queries DB
         const [txStats, clientStats, wallets] = await Promise.all([
             pool.query(`
                 SELECT
@@ -38,25 +40,35 @@ const kpisService = {
             `),
         ]);
 
-        // Soldes réels depuis Blnk — tous en parallèle
+        // Soldes Blnk — cache Redis 30s (368 wallets × 3 = 1104 appels sans cache)
         let totalAvailable = 0, totalBlocked = 0, totalReceivable = 0;
 
-        await Promise.all(wallets.rows.map(async (w) => {
-            try {
-                const [avail, blocked, recv] = await Promise.all([
-                    blnkService.getBalance(w.available_balance_id),
-                    blnkService.getBalance(w.blocked_balance_id),
-                    blnkService.getBalance(w.receivable_balance_id),
-                ]);
-                totalAvailable += avail.balance / 100;
-                totalBlocked += blocked.balance / 100;
-                totalReceivable += recv.balance / 100;
-            } catch (e) { }
-        }));
+        const cacheKey = 'kpis:balances';
+        const cached = await redis.get(cacheKey);
+
+        if (cached) {
+            ({ totalAvailable, totalBlocked, totalReceivable } = JSON.parse(cached));
+        } else {
+            await Promise.all(wallets.rows.map(async (w) => {
+                try {
+                    const [avail, blocked, recv] = await Promise.all([
+                        blnkService.getBalance(w.available_balance_id),
+                        blnkService.getBalance(w.blocked_balance_id),
+                        blnkService.getBalance(w.receivable_balance_id),
+                    ]);
+                    totalAvailable += avail.balance / 100;
+                    totalBlocked += blocked.balance / 100;
+                    totalReceivable += recv.balance / 100;
+                } catch (e) { }
+            }));
+
+            await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({
+                totalAvailable, totalBlocked, totalReceivable,
+            }));
+        }
 
         const tx = txStats.rows[0];
         const cl = clientStats.rows[0];
-
         const successRate = tx.total_transactions > 0
             ? ((tx.total_transactions - tx.total_errors) / tx.total_transactions * 100).toFixed(1)
             : 100;
@@ -109,7 +121,6 @@ const kpisService = {
             GROUP BY DATE(created_at)
             ORDER BY date ASC
         `);
-
         return result.rows.map((r) => ({
             date: r.date,
             total: parseInt(r.total),
@@ -124,9 +135,7 @@ const kpisService = {
     async getTopClients() {
         const result = await pool.query(`
             SELECT
-                c.client_id,
-                c.name,
-                c.email,
+                c.client_id, c.name, c.email,
                 COUNT(tl.id) as total_transactions,
                 COALESCE(SUM(tl.amount), 0) as total_volume,
                 COALESCE(SUM(CASE WHEN tl.type = 'PAYMENT' THEN tl.amount ELSE 0 END), 0) as total_recharged,
@@ -139,7 +148,6 @@ const kpisService = {
             ORDER BY total_volume DESC
             LIMIT 10
         `);
-
         return result.rows.map((r) => ({
             client_id: r.client_id,
             name: r.name,
@@ -156,20 +164,15 @@ const kpisService = {
     async getAlerts() {
         const alerts = [];
 
-        // ── FINANCIER ─────────────────────────────────────────
-
-        // Toutes les queries DB en parallèle
         const [errorsResult, debtsResult, zeroBalanceResult, inactivityResult] = await Promise.all([
             pool.query(`
                 SELECT client_id, COUNT(*) as error_count
                 FROM transaction_logs
                 WHERE status = 'ERROR' AND created_at >= NOW() - INTERVAL '24 hours'
-                GROUP BY client_id
-                HAVING COUNT(*) > 0
+                GROUP BY client_id HAVING COUNT(*) > 0
             `),
             pool.query(`
-                SELECT
-                    c.client_id, c.name,
+                SELECT c.client_id, c.name,
                     COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount::numeric ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_PAYMENT' THEN tl.amount::numeric ELSE 0 END), 0) as net_debt
                 FROM clients c
@@ -181,8 +184,7 @@ const kpisService = {
                 ) > 1000
             `),
             pool.query(`
-                SELECT c.client_id, c.name,
-                    cw.available_balance_id,
+                SELECT c.client_id, c.name, cw.available_balance_id,
                     COALESCE(SUM(CASE WHEN tl.type = 'BLOCK' THEN tl.amount::numeric ELSE 0 END), 0) as total_blocked
                 FROM clients c
                 JOIN client_wallets cw ON c.client_id = cw.client_id
@@ -197,106 +199,71 @@ const kpisService = {
             `),
         ]);
 
-        // Erreurs récentes
         errorsResult.rows.forEach((r) => {
             alerts.push({
-                category: 'financial',
-                type: 'error',
-                severity: 'high',
+                category: 'financial', type: 'error', severity: 'high',
                 message: `${r.error_count} erreur(s) de transaction pour le client ${r.client_id}`,
-                client_id: r.client_id,
-                created_at: new Date(),
+                client_id: r.client_id, created_at: new Date(),
             });
         });
 
-        // Dettes élevées
         debtsResult.rows.forEach((r) => {
             alerts.push({
-                category: 'financial',
-                type: 'warning',
-                severity: 'medium',
+                category: 'financial', type: 'warning', severity: 'medium',
                 message: `Dette nette élevée de ${parseFloat(r.net_debt).toLocaleString('fr-FR')} MAD pour ${r.name}`,
-                client_id: r.client_id,
-                created_at: new Date(),
+                client_id: r.client_id, created_at: new Date(),
             });
         });
 
-        // Solde zéro avec encours — appels Blnk en parallèle (available_balance_id déjà dans la query)
         await Promise.all(zeroBalanceResult.rows.map(async (r) => {
             try {
                 const balance = await this._getBlnkBalance(r.available_balance_id);
                 if (balance === 0 && parseFloat(r.total_blocked) > 0) {
                     alerts.push({
-                        category: 'financial',
-                        type: 'warning',
-                        severity: 'medium',
+                        category: 'financial', type: 'warning', severity: 'medium',
                         message: `Solde disponible à zéro avec ${parseFloat(r.total_blocked).toLocaleString('fr-FR')} MAD bloqué pour ${r.name}`,
-                        client_id: r.client_id,
-                        created_at: new Date(),
+                        client_id: r.client_id, created_at: new Date(),
                     });
                 }
             } catch { }
         }));
 
-        // Inactivité 24h
         if (parseInt(inactivityResult.rows[0].recent_tx) === 0) {
             alerts.push({
-                category: 'financial',
-                type: 'info',
-                severity: 'low',
+                category: 'financial', type: 'info', severity: 'low',
                 message: 'Aucune transaction enregistrée dans les dernières 24 heures',
-                client_id: null,
-                created_at: new Date(),
+                client_id: null, created_at: new Date(),
             });
         }
 
-        // ── SYSTÈME ───────────────────────────────────────────
-
-        // Health checks en parallèle
         const [blnkHealth, dbHealth, errorRateResult] = await Promise.all([
             this._checkService(`${process.env.BLNK_URL || 'http://blnk:5001'}/health`),
             this._checkDatabase(),
             pool.query(`
-                SELECT
-                    COUNT(*) as total,
-                    COUNT(CASE WHEN status = 'ERROR' THEN 1 END) as errors
-                FROM transaction_logs
-                WHERE created_at >= NOW() - INTERVAL '1 hour'
+                SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'ERROR' THEN 1 END) as errors
+                FROM transaction_logs WHERE created_at >= NOW() - INTERVAL '1 hour'
             `),
         ]);
 
-        if (blnkHealth.status !== 'OK') {
-            alerts.push({
-                category: 'system',
-                type: 'error',
-                severity: 'high',
-                message: 'Blnk Ledger inaccessible — les transactions sont bloquées',
-                client_id: null,
-                created_at: new Date(),
-            });
-        }
+        if (blnkHealth.status !== 'OK') alerts.push({
+            category: 'system', type: 'error', severity: 'high',
+            message: 'Blnk Ledger inaccessible — les transactions sont bloquées',
+            client_id: null, created_at: new Date(),
+        });
 
-        if (dbHealth.status !== 'OK') {
-            alerts.push({
-                category: 'system',
-                type: 'error',
-                severity: 'high',
-                message: 'PostgreSQL inaccessible — perte de données possible',
-                client_id: null,
-                created_at: new Date(),
-            });
-        }
+        if (dbHealth.status !== 'OK') alerts.push({
+            category: 'system', type: 'error', severity: 'high',
+            message: 'PostgreSQL inaccessible — perte de données possible',
+            client_id: null, created_at: new Date(),
+        });
 
         const total = parseInt(errorRateResult.rows[0].total);
         const errors = parseInt(errorRateResult.rows[0].errors);
         if (total > 0 && (errors / total) > 0.1) {
             alerts.push({
-                category: 'system',
-                type: 'warning',
-                severity: 'high',
+                category: 'system', type: 'warning', severity: 'high',
                 message: `Taux d'erreur élevé : ${((errors / total) * 100).toFixed(0)}% sur la dernière heure (${errors}/${total})`,
-                client_id: null,
-                created_at: new Date(),
+                client_id: null, created_at: new Date(),
             });
         }
 
@@ -323,9 +290,7 @@ const kpisService = {
         try {
             const res = await fetch(url, { signal: AbortSignal.timeout(1000) });
             return { status: res.ok ? 'OK' : 'ERROR' };
-        } catch (err) {
-            return { status: 'ERROR' };
-        }
+        } catch { return { status: 'ERROR' }; }
     },
 
     async _checkDatabase() {
