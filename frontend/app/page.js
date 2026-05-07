@@ -12,52 +12,38 @@ import PeopleIcon from '@mui/icons-material/People';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import api from '@/lib/api';
+import { kpisApi } from '@/lib/api';
 import { useAlerts } from '@/lib/alerts-context';
 import { useEffect } from 'react';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
 const fmtN = (n) => Number(n || 0).toLocaleString('fr-FR');
 
-// Fetcher SWR — utilise l'instance axios existante
-const fetcher = (url) => api.get(url).then(r => r.data);
-
 export default function Dashboard() {
   const { setAlerts } = useAlerts();
 
   const { data: overview, isLoading: ovLoading, error: ovError } = useSWR(
-    '/kpis/overview?period=all',
-    fetcher,
-    { refreshInterval: 15000 }
+    'overview', () => kpisApi.overview(), { refreshInterval: 15000 }
   );
 
   const { data: topClients = [] } = useSWR(
-    '/kpis/top-clients',
-    fetcher,
-    { refreshInterval: 60000 }
+    'topClients', () => kpisApi.topClients(), { refreshInterval: 60000 }
   );
 
-  const { data: recentTxData, isLoading: txLoading } = useSWR(
-    '/kpis/recent-transactions?limit=10',
-    fetcher,
-    { refreshInterval: 15000 }
+  const { data: recentTx = [], isLoading: txLoading } = useSWR(
+    'recentTransactions', () => kpisApi.recentTransactions(), { refreshInterval: 15000 }
   );
 
   const { data: alertsData } = useSWR(
-    '/kpis/alerts',
-    fetcher,
-    { refreshInterval: 60000 }
+    'alerts', () => kpisApi.alerts(), { refreshInterval: 60000 }
   );
 
   useEffect(() => {
     if (alertsData) setAlerts(alertsData);
   }, [alertsData, setAlerts]);
 
-  const recentTx = Array.isArray(recentTxData) 
-  ? recentTxData 
-  : (recentTxData?.data || []);
   const isLoading = ovLoading || txLoading;
-  
+
   return (
     <Box>
       <DashboardHeader />

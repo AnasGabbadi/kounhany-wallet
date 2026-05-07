@@ -1,12 +1,13 @@
 'use client';
-import { useEffect, useState, useMemo } from 'react';
+import useSWR from 'swr';
+import { useState, useMemo } from 'react';
 import {
   Box, Typography, Card, CardContent, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow,
   Alert, CircularProgress, TablePagination, Tooltip,
   Button, Avatar, Chip,
 } from '@mui/material';
-import { clientsApi, walletApi } from '@/lib/api';
+import { kpisApi } from '@/lib/api';
 import StatusBadge from '@/components/common/StatusBadge';
 import TransactionKpis from '@/components/transactions/TransactionKpis';
 import TransactionFilters from '@/components/transactions/TransactionFilters';
@@ -18,12 +19,8 @@ const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigit
 const exportCSV = (transactions) => {
   const headers = ['Client', 'Type', 'Montant', 'Référence', 'Description', 'Statut', 'Date'];
   const rows = transactions.map((tx) => [
-    tx.client_name || tx.client_id,
-    tx.type,
-    tx.amount,
-    tx.reference || '',
-    tx.description || '',
-    tx.status,
+    tx.client_name || tx.client_id, tx.type, tx.amount,
+    tx.reference || '', tx.description || '', tx.status,
     new Date(tx.created_at).toLocaleString('fr-FR'),
   ]);
   const csv = [headers, ...rows].map((r) => r.join(';')).join('\n');
@@ -37,9 +34,6 @@ const exportCSV = (transactions) => {
 };
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -48,48 +42,28 @@ export default function TransactionsPage() {
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [selectedTx, setSelectedTx] = useState(null);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const clientsRes = await clientsApi.list();
-        const clients = clientsRes.data || [];
-        const txAll = (await Promise.all(
-          clients.map((c) =>
-            walletApi.transactions(c.client_id)
-              .then((res) => (res.data || []).map((tx) => ({ ...tx, client_name: c.name })))
-              .catch(() => [])
-          )
-        )).flat();
-        txAll.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        setTransactions(txAll);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAll();
-  }, []);
+  const { data: txData, isLoading, error } = useSWR(
+    'allTransactions', () => kpisApi.allTransactions(), { refreshInterval: 30000 }
+  );
 
-  const filtered = useMemo(() => {
-    return transactions.filter((tx) => {
-      const matchSearch = !search ||
-        tx.client_name?.toLowerCase().includes(search.toLowerCase()) ||
-        tx.reference?.toLowerCase().includes(search.toLowerCase()) ||
-        tx.description?.toLowerCase().includes(search.toLowerCase());
-      const matchType = !typeFilter || tx.type === typeFilter;
-      const txDate = new Date(tx.created_at);
-      const matchFrom = !dateFrom || txDate >= new Date(dateFrom);
-      const matchTo = !dateTo || txDate <= new Date(dateTo + 'T23:59:59');
-      return matchSearch && matchType && matchFrom && matchTo;
-    });
-  }, [transactions, search, typeFilter, dateFrom, dateTo]);
+  const transactions = Array.isArray(txData) ? txData : (txData?.data || []);
+
+  const filtered = useMemo(() => transactions.filter((tx) => {
+    const matchSearch = !search ||
+      tx.client_name?.toLowerCase().includes(search.toLowerCase()) ||
+      tx.reference?.toLowerCase().includes(search.toLowerCase()) ||
+      tx.description?.toLowerCase().includes(search.toLowerCase());
+    const matchType = !typeFilter || tx.type === typeFilter;
+    const txDate = new Date(tx.created_at);
+    const matchFrom = !dateFrom || txDate >= new Date(dateFrom);
+    const matchTo = !dateTo || txDate <= new Date(dateTo + 'T23:59:59');
+    return matchSearch && matchType && matchFrom && matchTo;
+  }), [transactions, search, typeFilter, dateFrom, dateTo]);
 
   const paginated = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   return (
     <Box>
-      {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>Transactions</Typography>
         <Typography variant="body2" color="text.secondary">
@@ -97,12 +71,10 @@ export default function TransactionsPage() {
         </Typography>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error.message}</Alert>}
 
-      {/* KPIs */}
-      <TransactionKpis transactions={filtered} loading={loading} />
+      <TransactionKpis transactions={filtered} loading={isLoading} />
 
-      {/* Filtres */}
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ p: 2, pb: '16px !important' }}>
           <TransactionFilters
@@ -117,11 +89,9 @@ export default function TransactionsPage() {
         </CardContent>
       </Card>
 
-      {/* Table */}
       <Card sx={{ width: '100%', minHeight: 'calc(100vh - 380px)', display: 'flex', flexDirection: 'column' }}>
         <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 2 } }}>
-
-          {loading ? (
+          {isLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
               <CircularProgress sx={{ color: '#FAC345' }} />
             </Box>
@@ -132,9 +102,7 @@ export default function TransactionsPage() {
                   <TableHead>
                     <TableRow>
                       {['Client', 'Type', 'Montant', 'Description', 'Statut', 'Date', 'Actions'].map((h) => (
-                        <TableCell key={h} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
-                          {h}
-                        </TableCell>
+                        <TableCell key={h} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{h}</TableCell>
                       ))}
                     </TableRow>
                   </TableHead>
@@ -150,42 +118,25 @@ export default function TransactionsPage() {
                         <TableRow key={tx.id} hover>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                              <Avatar sx={{
-                                width: 34, height: 34,
-                                bgcolor: '#FAC345', color: '#212529',
-                                fontWeight: 700, fontSize: '0.8rem', flexShrink: 0,
-                              }}>
+                              <Avatar sx={{ width: 34, height: 34, bgcolor: '#FAC345', color: '#212529', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>
                                 {tx.client_name?.charAt(0).toUpperCase()}
                               </Avatar>
                               <Box>
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {tx.client_name || tx.client_id}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.68rem' }}>
-                                  {tx.client_id}
-                                </Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>{tx.client_name || tx.client_id}</Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.68rem' }}>{tx.client_id}</Typography>
                               </Box>
                             </Box>
                           </TableCell>
-                          <TableCell>
-                            <StatusBadge status={tx.type} />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-                              {fmt(tx.amount)} MAD
-                            </Typography>
-                          </TableCell>
+                          <TableCell><StatusBadge status={tx.type} /></TableCell>
+                          <TableCell><Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(tx.amount)} MAD</Typography></TableCell>
                           <TableCell>
                             <Tooltip title={tx.description || ''}>
-                              <Typography variant="body2" sx={{ maxWidth: 160 }} noWrap>
-                                {tx.description || '—'}
-                              </Typography>
+                              <Typography variant="body2" sx={{ maxWidth: 160 }} noWrap>{tx.description || '—'}</Typography>
                             </Tooltip>
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={tx.status}
-                              size="small"
+                              label={tx.status} size="small"
                               sx={{
                                 bgcolor: tx.status === 'SUCCESS' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
                                 color: tx.status === 'SUCCESS' ? '#10B981' : '#EF4444',
@@ -195,24 +146,17 @@ export default function TransactionsPage() {
                             />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2">
-                              {new Date(tx.created_at).toLocaleDateString('fr-FR')}
-                            </Typography>
+                            <Typography variant="body2">{new Date(tx.created_at).toLocaleDateString('fr-FR')}</Typography>
                             <Typography variant="caption" color="text.secondary">
                               {new Date(tx.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                             </Typography>
                           </TableCell>
                           <TableCell>
                             <Button
-                              size="small"
-                              variant="outlined"
+                              size="small" variant="outlined"
                               startIcon={<ReceiptIcon sx={{ fontSize: '14px !important' }} />}
                               onClick={() => setSelectedTx(tx)}
-                              sx={{
-                                fontSize: '0.72rem', py: 0.3,
-                                borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary',
-                                '&:hover': { borderColor: 'rgba(0,0,0,0.4)', bgcolor: 'rgba(0,0,0,0.04)' },
-                              }}
+                              sx={{ fontSize: '0.72rem', py: 0.3, borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary', '&:hover': { borderColor: 'rgba(0,0,0,0.4)', bgcolor: 'rgba(0,0,0,0.04)' } }}
                             >
                               Détail
                             </Button>
@@ -240,10 +184,7 @@ export default function TransactionsPage() {
         </CardContent>
       </Card>
 
-      <TransactionDetailDialog
-        tx={selectedTx}
-        onClose={() => setSelectedTx(null)}
-      />
+      <TransactionDetailDialog tx={selectedTx} onClose={() => setSelectedTx(null)} />
     </Box>
   );
 }

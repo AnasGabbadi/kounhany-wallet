@@ -29,6 +29,18 @@ api.interceptors.response.use(
   }
 );
 
+export const kpisApi = {
+  overview: (period = 'all') => api.get(`/kpis/overview?period=${period}`).then(r => r.data),
+  topClients: () => api.get('/kpis/top-clients').then(r => r.data),
+  alerts: () => api.get('/kpis/alerts').then(r => r.data),
+  transactionsTrend: (days = 7) => api.get(`/kpis/transactions-trend?days=${days}`).then(r => r.data),
+  recentTransactions: () => api.get('/kpis/recent-transactions').then(r => Array.isArray(r) ? r : r.data),
+  allTransactions: () => api.get('/kpis/all-transactions').then(r => Array.isArray(r) ? r : r.data),
+  allBalances: () => api.get('/kpis/all-balances').then(r => Array.isArray(r) ? r : r.data),
+  clients: () => api.get('/clients').then(r => Array.isArray(r) ? r : r.data),
+  orders: () => api.get('/orders').then(r => Array.isArray(r) ? r?.orders || r : r.data?.orders || r.data),
+};
+
 export const clientsApi = {
   list: () => api.get('/clients'),
   getOne: (id) => api.get(`/clients/${id}`),

@@ -1,5 +1,7 @@
 const kpisService = require('../services/kpis.service');
 const pool = require('../config/db');
+const redis = require('../config/redis');
+const blnkService = require('../services/blnk.service');
 
 const kpisController = {
     async overview(req, res, next) {
@@ -34,7 +36,7 @@ const kpisController = {
 
     async getRecentTransactions(req, res, next) {
         try {
-            const limit = parseInt(req.query.limit) || 10;
+            const limit = Math.min(parseInt(req.query.limit) || 10, 1000);
             const result = await pool.query(`
       SELECT 
         tl.*,
@@ -49,6 +51,46 @@ const kpisController = {
                 success: true,
                 data: result.rows,
             });
+        } catch (err) { next(err); }
+    },
+
+    async getAllBalances(req, res, next) {
+        try {
+            const cacheKey = 'kpis:all-balances';
+            const cached = await redis.get(cacheKey);
+            if (cached) return res.json({ success: true, data: JSON.parse(cached) });
+
+            const result = await pool.query(`
+      SELECT 
+        c.client_id,
+        cw.available_balance_id,
+        cw.blocked_balance_id,
+        cw.receivable_balance_id
+      FROM clients c
+      JOIN client_wallets cw ON c.client_id = cw.client_id
+      WHERE c.active = true
+    `);
+
+            const balances = await Promise.all(result.rows.map(async (row) => {
+                try {
+                    const [avail, blocked, recv] = await Promise.all([
+                        blnkService.getBalance(row.available_balance_id),
+                        blnkService.getBalance(row.blocked_balance_id),
+                        blnkService.getBalance(row.receivable_balance_id),
+                    ]);
+                    return {
+                        client_id: row.client_id,
+                        available: avail.balance / 10000,
+                        blocked: blocked.balance / 10000,
+                        receivable: recv.balance / 10000,
+                    };
+                } catch {
+                    return { client_id: row.client_id, available: 0, blocked: 0, receivable: 0 };
+                }
+            }));
+
+            await redis.setEx(cacheKey, 300, JSON.stringify(balances));
+            res.json({ success: true, data: balances });
         } catch (err) { next(err); }
     },
 };

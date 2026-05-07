@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
+import useSWR from 'swr';
+import { useState } from 'react';
 import {
   Box, Typography, Alert, CircularProgress,
   Card, CardContent, TextField, InputAdornment,
@@ -9,57 +10,42 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
-import { ordersApi } from '@/lib/api';
+import { kpisApi, ordersApi } from '@/lib/api';
 import OrdersStatCards from '@/components/orders/OrdersStatCards';
 import OrdersTable from '@/components/orders/OrdersTable';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState([]);
-  const [filtered, setFiltered] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [actionLoading, setActionLoading] = useState(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [error, setError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
   const [invoicing, setInvoicing] = useState(false);
   const [invoiceSuccess, setInvoiceSuccess] = useState(null);
 
-  const fetchOrders = async () => {
-    try {
-      setLoading(true);
-      const res = await ordersApi.getAll({ limit: 200 });
-      setOrders(res.orders || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data, isLoading, mutate } = useSWR(
+    'orders', () => kpisApi.orders(), { refreshInterval: 30000 }
+  );
 
-  useEffect(() => { fetchOrders(); }, []);
+  const orders = Array.isArray(data) ? data : (data?.orders || []);
 
-  useEffect(() => {
-    let result = orders;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(o =>
-        o.reference?.toLowerCase().includes(q) ||
-        o.description?.toLowerCase().includes(q) ||
-        o.client_id?.toLowerCase().includes(q) ||
-        o.client_name?.toLowerCase().includes(q)
-      );
-    }
-    if (filterType) result = result.filter(o => o.order_type === filterType);
-    if (filterStatus) result = result.filter(o => o.status === filterStatus);
-    setFiltered(result);
-  }, [orders, search, filterType, filterStatus]);
+  const filtered = orders.filter((o) => {
+    const q = search.toLowerCase();
+    const matchSearch = !search ||
+      o.reference?.toLowerCase().includes(q) ||
+      o.description?.toLowerCase().includes(q) ||
+      o.client_id?.toLowerCase().includes(q) ||
+      o.client_name?.toLowerCase().includes(q);
+    const matchType = !filterType || o.order_type === filterType;
+    const matchStatus = !filterStatus || o.status === filterStatus;
+    return matchSearch && matchType && matchStatus;
+  });
 
   const handleConfirm = async (orderId) => {
     setActionLoading(orderId);
     try {
       await ordersApi.confirm(orderId);
-      await fetchOrders();
+      mutate();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -71,7 +57,7 @@ export default function OrdersPage() {
     setActionLoading(orderId);
     try {
       await ordersApi.cancel(orderId);
-      await fetchOrders();
+      mutate();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -84,7 +70,7 @@ export default function OrdersPage() {
     try {
       await ordersApi.invoiceLogistique();
       setInvoiceSuccess('Facturation mensuelle LOGISTIQUE lancée');
-      await fetchOrders();
+      mutate();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -94,7 +80,6 @@ export default function OrdersPage() {
 
   return (
     <Box>
-      {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -110,17 +95,10 @@ export default function OrdersPage() {
           <span>
             <Button
               variant="contained"
-              startIcon={invoicing
-                ? <CircularProgress size={16} sx={{ color: 'white' }} />
-                : <ReceiptLongIcon />
-              }
+              startIcon={invoicing ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <ReceiptLongIcon />}
               onClick={handleInvoiceLogistique}
               disabled={invoicing}
-              sx={{
-                bgcolor: '#FAC345', color: '#212529',
-                boxShadow: 'none', fontWeight: 700,
-                '&:hover': { bgcolor: '#a8832d', boxShadow: 'none' },
-              }}
+              sx={{ bgcolor: '#FAC345', color: '#212529', boxShadow: 'none', fontWeight: 700, '&:hover': { bgcolor: '#a8832d', boxShadow: 'none' } }}
             >
               Facturer LOGISTIQUE
             </Button>
@@ -129,16 +107,10 @@ export default function OrdersPage() {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>{error}</Alert>}
-      {invoiceSuccess && (
-        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setInvoiceSuccess(null)}>
-          {invoiceSuccess}
-        </Alert>
-      )}
+      {invoiceSuccess && <Alert severity="success" sx={{ mb: 3 }} onClose={() => setInvoiceSuccess(null)}>{invoiceSuccess}</Alert>}
 
-      {/* Stats */}
       <OrdersStatCards orders={orders} />
 
-      {/* Filtres */}
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ p: 2, pb: '16px !important' }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -148,13 +120,7 @@ export default function OrdersPage() {
               onChange={(e) => setSearch(e.target.value)}
               size="small"
               sx={{ flex: 1 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
-              }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" color="action" /></InputAdornment> }}
             />
             <FormControl size="small" sx={{ minWidth: 140 }}>
               <InputLabel>Type</InputLabel>
@@ -180,19 +146,12 @@ export default function OrdersPage() {
         </CardContent>
       </Card>
 
-      {/* Table */}
-      {loading ? (
+      {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', pt: 10 }}>
           <CircularProgress sx={{ color: '#FAC345' }} />
         </Box>
       ) : (
-        <OrdersTable
-          orders={filtered}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
-          actionLoading={actionLoading}
-          showClient
-        />
+        <OrdersTable orders={filtered} onConfirm={handleConfirm} onCancel={handleCancel} actionLoading={actionLoading} showClient />
       )}
     </Box>
   );

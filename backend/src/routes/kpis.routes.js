@@ -91,4 +91,39 @@ router.get('/alerts', kpisController.alerts);
  */
 router.get('/recent-transactions', kpisController.getRecentTransactions);
 
+/**
+ * @swagger
+ * /kpis/all-transactions:
+ *   get:
+ *     summary: Toutes les transactions
+ *     tags: [KPIs]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Nombre maximal de transactions à retourner
+ *     responses:
+ *       200:
+ *         description: Toutes les transactions retournées
+ */
+router.get('/all-transactions', kpisController.getRecentTransactions);
+
+/**
+ * @swagger
+ * /kpis/all-balances:
+ *   get:
+ *     summary: Tous les soldes
+ *     tags: [KPIs]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Tous les soldes retournés
+ */
+router.get('/all-balances', kpisController.getAllBalances);
+
 module.exports = router;
