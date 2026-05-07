@@ -4,9 +4,6 @@ const nextConfig = {
   basePath: '/wallet',
   assetPrefix: '/wallet',
   compress: true,
-  experimental: {
-    optimizePackageImports: ['@mui/material', '@mui/icons-material', 'recharts'],
-  },
 };
 
 module.exports = nextConfig;
