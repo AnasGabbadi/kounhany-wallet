@@ -38,7 +38,7 @@ export const kpisApi = {
   allTransactions: () => api.get('/kpis/all-transactions').then(r => Array.isArray(r) ? r : r.data),
   allBalances: () => api.get('/kpis/all-balances').then(r => Array.isArray(r) ? r : r.data),
   clients: () => api.get('/clients').then(r => Array.isArray(r) ? r : r.data),
-  orders: () => api.get('/orders').then(r => Array.isArray(r) ? r?.orders || r : r.data?.orders || r.data),
+  orders: () => api.get('/orders').then(r => r?.orders || r?.data?.orders || []),
 };
 
 export const clientsApi = {

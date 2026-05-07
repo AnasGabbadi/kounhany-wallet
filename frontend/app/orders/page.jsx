@@ -23,11 +23,9 @@ export default function OrdersPage() {
   const [invoicing, setInvoicing] = useState(false);
   const [invoiceSuccess, setInvoiceSuccess] = useState(null);
 
-  const { data, isLoading, mutate } = useSWR(
+  const { data: orders = [], isLoading, mutate } = useSWR(
     'orders', () => kpisApi.orders(), { refreshInterval: 30000 }
   );
-
-  const orders = Array.isArray(data) ? data : (data?.orders || []);
 
   const filtered = orders.filter((o) => {
     const q = search.toLowerCase();
