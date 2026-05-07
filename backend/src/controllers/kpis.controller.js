@@ -1,4 +1,5 @@
 const kpisService = require('../services/kpis.service');
+const pool = require('../config/db');
 
 const kpisController = {
     async overview(req, res, next) {
