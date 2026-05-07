@@ -53,9 +53,11 @@ export default function Dashboard() {
     if (alertsData) setAlerts(alertsData);
   }, [alertsData, setAlerts]);
 
-  const recentTx = recentTxData?.data || [];
+  const recentTx = Array.isArray(recentTxData) 
+  ? recentTxData 
+  : (recentTxData?.data || []);
   const isLoading = ovLoading || txLoading;
-
+  
   return (
     <Box>
       <DashboardHeader />
