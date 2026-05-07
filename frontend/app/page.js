@@ -25,14 +25,13 @@ const fetcher = (url) => api.get(url).then(r => r.data);
 export default function Dashboard() {
   const { setAlerts } = useAlerts();
 
-  // SWR — cache en mémoire + revalidation arrière-plan
   const { data: overview, isLoading: ovLoading, error: ovError } = useSWR(
     '/kpis/overview?period=all',
     fetcher,
-    { refreshInterval: 15000 } // refresh auto toutes les 15s
+    { refreshInterval: 15000 }
   );
 
-  const { data: topClients = [], isLoading: topLoading } = useSWR(
+  const { data: topClients = [] } = useSWR(
     '/kpis/top-clients',
     fetcher,
     { refreshInterval: 60000 }
@@ -41,7 +40,7 @@ export default function Dashboard() {
   const { data: recentTxData, isLoading: txLoading } = useSWR(
     '/kpis/recent-transactions?limit=10',
     fetcher,
-    { refreshInterval: 15000 } 
+    { refreshInterval: 15000 }
   );
 
   const { data: alertsData } = useSWR(
@@ -50,7 +49,6 @@ export default function Dashboard() {
     { refreshInterval: 60000 }
   );
 
-  // Sync alertes dans le context
   useEffect(() => {
     if (alertsData) setAlerts(alertsData);
   }, [alertsData, setAlerts]);
