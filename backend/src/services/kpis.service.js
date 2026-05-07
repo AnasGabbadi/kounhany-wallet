@@ -2,7 +2,8 @@ const pool = require('../config/db');
 const blnkService = require('./blnk.service');
 const redis = require('../config/redis');
 
-const CACHE_TTL = 30;
+const CACHE_TTL = 300; // 5 minutes
+const CACHE_REFRESH_THRESHOLD = 60; // Rafraîchir en arrière-plan si TTL < 60s
 
 const kpisService = {
 
@@ -40,31 +41,28 @@ const kpisService = {
             `),
         ]);
 
-        // Soldes Blnk — cache Redis 30s (368 wallets × 3 = 1104 appels sans cache)
+        // Soldes Blnk — cache Redis 5min avec refresh arrière-plan
         let totalAvailable = 0, totalBlocked = 0, totalReceivable = 0;
 
         const cacheKey = 'kpis:balances';
         const cached = await redis.get(cacheKey);
 
         if (cached) {
+            // Cache hit — réponse instantanée
             ({ totalAvailable, totalBlocked, totalReceivable } = JSON.parse(cached));
-        } else {
-            await Promise.all(wallets.rows.map(async (w) => {
-                try {
-                    const [avail, blocked, recv] = await Promise.all([
-                        blnkService.getBalance(w.available_balance_id),
-                        blnkService.getBalance(w.blocked_balance_id),
-                        blnkService.getBalance(w.receivable_balance_id),
-                    ]);
-                    totalAvailable += avail.balance / 10000;
-                    totalBlocked += blocked.balance / 10000;
-                    totalReceivable += recv.balance / 10000;
-                } catch (e) { }
-            }));
 
-            await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({
-                totalAvailable, totalBlocked, totalReceivable,
-            }));
+            // Rafraîchir en arrière-plan si cache expire bientôt
+            const ttl = await redis.ttl(cacheKey);
+            if (ttl < CACHE_REFRESH_THRESHOLD) {
+                setImmediate(() => this._refreshBalanceCache(wallets.rows));
+            }
+        } else {
+            // Cache miss — calcul synchrone
+            await this._refreshBalanceCache(wallets.rows);
+            const newCached = await redis.get(cacheKey);
+            if (newCached) {
+                ({ totalAvailable, totalBlocked, totalReceivable } = JSON.parse(newCached));
+            }
         }
 
         const tx = txStats.rows[0];
@@ -104,6 +102,34 @@ const kpisService = {
                 total: parseFloat(tx.volume_total),
             },
         };
+    },
+
+    // Recalcul des soldes Blnk — exécuté en arrière-plan
+    async _refreshBalanceCache(walletRows) {
+        try {
+            let totalAvailable = 0, totalBlocked = 0, totalReceivable = 0;
+
+            await Promise.all(walletRows.map(async (w) => {
+                try {
+                    const [avail, blocked, recv] = await Promise.all([
+                        blnkService.getBalance(w.available_balance_id),
+                        blnkService.getBalance(w.blocked_balance_id),
+                        blnkService.getBalance(w.receivable_balance_id),
+                    ]);
+                    totalAvailable += avail.balance / 10000;
+                    totalBlocked += blocked.balance / 10000;
+                    totalReceivable += recv.balance / 10000;
+                } catch (e) { }
+            }));
+
+            await redis.setEx('kpis:balances', CACHE_TTL, JSON.stringify({
+                totalAvailable, totalBlocked, totalReceivable,
+            }));
+
+            console.log(`[Cache] Soldes rafraîchis — Available: ${totalAvailable} | Blocked: ${totalBlocked} | Receivable: ${totalReceivable}`);
+        } catch (err) {
+            console.error('[Cache] Erreur refresh:', err.message);
+        }
     },
 
     async getTransactionsTrend(days = 7) {
