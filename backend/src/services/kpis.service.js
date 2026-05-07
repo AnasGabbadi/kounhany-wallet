@@ -56,9 +56,9 @@ const kpisService = {
                         blnkService.getBalance(w.blocked_balance_id),
                         blnkService.getBalance(w.receivable_balance_id),
                     ]);
-                    totalAvailable += avail.balance / 100;
-                    totalBlocked += blocked.balance / 100;
-                    totalReceivable += recv.balance / 100;
+                    totalAvailable += avail.balance / 10000;
+                    totalBlocked += blocked.balance / 10000;
+                    totalReceivable += recv.balance / 10000;
                 } catch (e) { }
             }));
 
@@ -273,7 +273,7 @@ const kpisService = {
     async _getBlnkBalance(balanceId) {
         try {
             const balance = await blnkService.getBalance(balanceId);
-            return balance.balance / 100;
+            return balance.balance / 10000;
         } catch { return 0; }
     },
 
