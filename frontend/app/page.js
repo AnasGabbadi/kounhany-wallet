@@ -12,7 +12,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import api, { clientsApi, walletApi } from '@/lib/api';
+import api from '@/lib/api';
 import { useAlerts } from '@/lib/alerts-context';
 
 
@@ -31,27 +31,17 @@ export default function Dashboard() {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const [ovRes, topRes, alertsRes, clientsRes] = await Promise.all([
+       const [ovRes, topRes, alertsRes, txRes] = await Promise.all([
           api.get('/kpis/overview?period=all'),
           api.get('/kpis/top-clients'),
           api.get('/kpis/alerts'),
-          clientsApi.list(),
+          api.get('/kpis/recent-transactions?limit=10'),
         ]);
 
         setOverview(ovRes.data);
         setTopClients(topRes.data);
         setAlerts(alertsRes.data);
-
-        const clients = clientsRes.data || [];
-        const txAll = await Promise.all(
-          clients.map((c) =>
-            walletApi.transactions(c.client_id)
-              .then((r) => (r.data || []).map((tx) => ({ ...tx, client_name: c.name })))
-              .catch(() => [])
-          )
-        );
-        const flat = txAll.flat().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        setRecentTx(flat.slice(0, 10));
+        setRecentTx(txRes.data?.data || []);
       } catch (err) {
         setError(err.message);
       } finally {

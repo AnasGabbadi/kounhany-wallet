@@ -30,6 +30,26 @@ const kpisController = {
             res.json({ success: true, data: result });
         } catch (err) { next(err); }
     },
+
+    async getRecentTransactions(req, res, next) {
+        try {
+            const limit = parseInt(req.query.limit) || 10;
+            const result = await pool.query(`
+      SELECT 
+        tl.*,
+        c.name as client_name
+      FROM transaction_logs tl
+      LEFT JOIN clients c ON tl.client_id = c.client_id
+      ORDER BY tl.created_at DESC
+      LIMIT $1
+    `, [limit]);
+
+            res.json({
+                success: true,
+                data: result.rows,
+            });
+        } catch (err) { next(err); }
+    },
 };
 
 module.exports = kpisController;

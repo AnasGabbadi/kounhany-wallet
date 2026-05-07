@@ -70,4 +70,25 @@ router.get('/top-clients', kpisController.topClients);
  */
 router.get('/alerts', kpisController.alerts);
 
+/**
+ * @swagger
+ * /kpis/recent-transactions:
+ *   get:
+ *     summary: Transactions récentes
+ *     tags: [KPIs]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Nombre maximal de transactions à retourner
+ *     responses:
+ *       200:
+ *         description: Transactions récentes retournées
+ */
+router.get('/recent-transactions', kpisController.getRecentTransactions);
+
 module.exports = router;
