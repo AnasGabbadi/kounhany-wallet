@@ -15,7 +15,6 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import api from '@/lib/api';
 import { useAlerts } from '@/lib/alerts-context';
 
-
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
 const fmtN = (n) => Number(n || 0).toLocaleString('fr-FR');
 
@@ -28,27 +27,27 @@ export default function Dashboard() {
   const { setAlerts } = useAlerts();
 
   useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      try {
-       const [ovRes, topRes, alertsRes, txRes] = await Promise.all([
-          api.get('/kpis/overview?period=all'),
-          api.get('/kpis/top-clients'),
-          api.get('/kpis/alerts'),
-          api.get('/kpis/recent-transactions?limit=10'),
-        ]);
+    setLoading(true);
+    setError(null);
 
-        setOverview(ovRes.data);
-        setTopClients(topRes.data);
-        setAlerts(alertsRes.data);
-        setRecentTx(txRes.data?.data || []);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAll();
+    // Chaque appel indépendant — affichage progressif dès réception
+    api.get('/kpis/overview?period=all')
+      .then(r => setOverview(r.data))
+      .catch(err => setError(err.message));
+
+    api.get('/kpis/top-clients')
+      .then(r => setTopClients(r.data))
+      .catch(() => {});
+
+    api.get('/kpis/alerts')
+      .then(r => setAlerts(r.data))
+      .catch(() => {});
+
+    api.get('/kpis/recent-transactions?limit=10')
+      .then(r => setRecentTx(r.data?.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+
   }, []);
 
   return (
@@ -72,7 +71,7 @@ export default function Dashboard() {
             subtitle={`+${overview?.clients.new_this_week || 0} cette semaine`}
             icon={<PeopleIcon fontSize="inherit" />}
             color="#FAC345"
-            loading={loading}
+            loading={!overview}
             trend={overview?.clients.new_this_week > 0 ? 100 : 0}
           />
         </Grid>
@@ -83,7 +82,7 @@ export default function Dashboard() {
             subtitle={`Encours : ${fmt(overview?.balances.total_encours || 0)} MAD`}
             icon={<AccountBalanceWalletIcon fontSize="inherit" />}
             color="#10B981"
-            loading={loading}
+            loading={!overview}
             trend={overview?.balances.total_assets > 0 ? 12 : 0}
           />
         </Grid>
@@ -94,7 +93,7 @@ export default function Dashboard() {
             subtitle={`Succès : ${overview?.transactions.success_rate || 100}%`}
             icon={<ReceiptIcon fontSize="inherit" />}
             color="#3B82F6"
-            loading={loading}
+            loading={!overview}
             trend={overview?.transactions.success_rate === 100 ? 5 : -10}
           />
         </Grid>
@@ -105,7 +104,7 @@ export default function Dashboard() {
             subtitle={`Rechargements : ${fmt(overview?.volumes.payments || 0)} MAD`}
             icon={<TrendingUpIcon fontSize="inherit" />}
             color="#212529"
-            loading={loading}
+            loading={!overview}
             trend={overview?.volumes.total > 0 ? 8 : 0}
           />
         </Grid>
