@@ -7,7 +7,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
 const jwtMiddleware = require('./middlewares/jwt.middleware');
 const errorMiddleware = require('./middlewares/error.middleware');
-const authRoutes = require('./routes/auth.routes');       // ← ajouter
+const authRoutes = require('./routes/auth.routes');       
 const walletRoutes = require('./routes/wallet.routes');
 const clientsRoutes = require('./routes/clients.routes');
 const kpisRoutes = require('./routes/kpis.routes');
@@ -15,6 +15,7 @@ const dolibarrRoutes = require('./routes/dolibarr.routes');
 const scimRoutes = require('./routes/scim.routes');
 const ordersRoutes = require('./routes/orders.routes');
 const logistiqueBilling = require('./jobs/logistique.billing');
+const scoringRoutes = require('./routes/scoring.routes');
 
 const app = express();
 
@@ -48,16 +49,15 @@ app.use('/scim/v2',
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ← Routes publiques AVANT jwtMiddleware
 app.use('/auth', authRoutes);
 
-// ← Routes protégées APRÈS jwtMiddleware
 app.use(jwtMiddleware);
 app.use('/clients', clientsRoutes);
 app.use('/wallet', walletRoutes);
 app.use('/kpis', kpisRoutes);
 app.use('/dolibarr', dolibarrRoutes);
 app.use('/orders', ordersRoutes);
+app.use('/scoring', scoringRoutes);
 app.use(errorMiddleware);
 
 module.exports = app;

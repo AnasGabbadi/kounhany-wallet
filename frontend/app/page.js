@@ -27,7 +27,7 @@ export default function Dashboard() {
   );
 
   const { data: topClients = [] } = useSWR(
-    'topClients', () => kpisApi.topClients(), { refreshInterval: 60000 }
+    'topScoring', () => kpisApi.allScores(), { refreshInterval: 60000 }
   );
 
   const { data: recentTx = [], isLoading: txLoading } = useSWR(

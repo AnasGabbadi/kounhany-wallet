@@ -6,10 +6,19 @@ import {
 } from '@mui/material';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import PersonIcon from '@mui/icons-material/Person';
+import StarIcon from '@mui/icons-material/Star';
 import { useState, useEffect } from 'react';
 import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0 });
+
+const NIVEAU_CONFIG = {
+  EXCELLENT: { color: '#10B981', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)' },
+  BON: { color: '#3B82F6', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.2)' },
+  MOYEN: { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+  RISQUÉ: { color: '#EF4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' },
+  NOUVEAU: { color: '#6B7280', bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.2)' },
+};
 
 const BalanceChip = ({ value, color }) => (
   <Chip
@@ -19,7 +28,23 @@ const BalanceChip = ({ value, color }) => (
   />
 );
 
-export default function ClientsTable({ clients, balances, balancesLoading, onDetail, onWallet, onOrders }) {
+const ScoreChip = ({ score, niveau }) => {
+  const config = NIVEAU_CONFIG[niveau] || NIVEAU_CONFIG.NOUVEAU;
+  return (
+    <Chip
+      icon={<StarIcon sx={{ fontSize: '11px !important', color: `${config.color} !important` }} />}
+      label={`${score}/100 · ${niveau}`}
+      size="small"
+      sx={{
+        bgcolor: config.bg, color: config.color,
+        fontWeight: 700, fontSize: '0.72rem',
+        border: `1px solid ${config.border}`,
+      }}
+    />
+  );
+};
+
+export default function ClientsTable({ clients, balances, balancesLoading, scores = {}, scoresLoading, onDetail, onWallet, onOrders }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(8);
 
@@ -33,7 +58,7 @@ export default function ClientsTable({ clients, balances, balancesLoading, onDet
         <Table>
           <TableHead>
             <TableRow>
-              {['Client', 'Statut', 'Contact', 'Disponible', 'Bloqué', 'Créances', 'Encours total', 'Actions'].map((h) => (
+              {['Client', 'Statut', 'Contact', 'Disponible', 'Bloqué', 'Créances', 'Encours total', 'Score', 'Actions'].map((h) => (
                 <TableCell key={h} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
                   {h}
                 </TableCell>
@@ -43,22 +68,19 @@ export default function ClientsTable({ clients, balances, balancesLoading, onDet
           <TableBody>
             {paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                   Aucun client trouvé
                 </TableCell>
               </TableRow>
             ) : (
               paginated.map((client) => {
                 const bal = balances[client.client_id];
+                const sc = scores[client.client_id];
                 const encours = bal ? Number(bal.blocked) + Number(bal.receivable) : 0;
                 const isActive = client.active !== false;
 
                 return (
-                  <TableRow
-                    key={client.client_id}
-                    hover
-                    sx={{ opacity: isActive ? 1 : 0.6 }}
-                  >
+                  <TableRow key={client.client_id} hover sx={{ opacity: isActive ? 1 : 0.6 }}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         <Avatar sx={{
@@ -121,60 +143,49 @@ export default function ClientsTable({ clients, balances, balancesLoading, onDet
                       ) : '—'}
                     </TableCell>
 
+                    {/* Colonne Score */}
+                    <TableCell>
+                      {scoresLoading && !sc ? (
+                        <Skeleton width={70} height={40} />
+                      ) : sc ? (
+                        <ScoreChip score={sc.score} niveau={sc.niveau} />
+                      ) : (
+                        <Typography variant="caption" color="text.disabled">—</Typography>
+                      )}
+                    </TableCell>
+
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
-
-                        {/* Détail — gris outlined */}
                         <Button
-                          size="small"
-                          variant="outlined"
+                          size="small" variant="outlined"
                           startIcon={<PersonIcon sx={{ fontSize: '14px !important' }} />}
                           onClick={() => onDetail(client)}
-                          sx={{
-                            fontSize: '0.72rem', py: 0.3,
-                            borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary',
-                            '&:hover': { borderColor: 'rgba(0,0,0,0.4)', bgcolor: 'rgba(0,0,0,0.04)' }
-                          }}
+                          sx={{ fontSize: '0.72rem', py: 0.3, borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary', '&:hover': { borderColor: 'rgba(0,0,0,0.4)', bgcolor: 'rgba(0,0,0,0.04)' } }}
                         >
                           Détail
                         </Button>
 
-                        {/* Wallet — jaune contained */}
                         {isActive && bal && (
                           <Button
-                            size="small"
-                            variant="contained"
+                            size="small" variant="contained"
                             startIcon={<AccountBalanceWalletIcon sx={{ fontSize: '14px !important' }} />}
                             onClick={() => onWallet(client.client_id)}
-                            sx={{
-                              fontSize: '0.72rem', py: 0.3,
-                              bgcolor: '#FAC345', color: '#212529',
-                              boxShadow: 'none',
-                              '&:hover': { bgcolor: '#E0A820', boxShadow: 'none' }
-                            }}
+                            sx={{ fontSize: '0.72rem', py: 0.3, bgcolor: '#FAC345', color: '#212529', boxShadow: 'none', '&:hover': { bgcolor: '#E0A820', boxShadow: 'none' } }}
                           >
                             Wallet
                           </Button>
                         )}
 
-                        {/* Commandes */}
                         {isActive && bal && (
                           <Button
-                            size="small"
-                            variant="contained"
+                            size="small" variant="contained"
                             startIcon={<ShoppingBagOutlinedIcon sx={{ fontSize: '14px !important' }} />}
                             onClick={() => onOrders(client.client_id)}
-                            sx={{
-                              fontSize: '0.72rem', py: 0.3,
-                              bgcolor: '#212529', color: '#FAC345',
-                              boxShadow: 'none',
-                              '&:hover': { bgcolor: '#4e3f1b', boxShadow: 'none' }
-                            }}
+                            sx={{ fontSize: '0.72rem', py: 0.3, bgcolor: '#212529', color: '#FAC345', boxShadow: 'none', '&:hover': { bgcolor: '#4e3f1b', boxShadow: 'none' } }}
                           >
                             Commandes
                           </Button>
                         )}
-
                       </Box>
                     </TableCell>
                   </TableRow>

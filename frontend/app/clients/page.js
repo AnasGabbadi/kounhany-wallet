@@ -29,6 +29,15 @@ export default function ClientsPage() {
   const balances = (Array.isArray(allBalancesData) ? allBalancesData : allBalancesData?.data || [])
     .reduce((acc, b) => { acc[b.client_id] = b; return acc; }, {});
 
+  const { data: allScoresData = [], isLoading: scoresLoading } = useSWR(
+    'allScores', () => kpisApi.allScores(), { refreshInterval: 300000 }
+  );
+
+  const scores = allScoresData.reduce((acc, s) => {
+    acc[s.client_id] = s;
+    return acc;
+  }, {});
+
   const handleCreateWallet = async (client) => {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/scim/v2/Users`, {
@@ -106,6 +115,8 @@ export default function ClientsPage() {
               clients={filtered}
               balances={balances}
               balancesLoading={balancesLoading}
+              scores={scores}
+              scoresLoading={scoresLoading}
               onDetail={(client) => setSelectedClient(client)}
               onWallet={(id) => router.push(`/clients/${id}/wallet`)}
               onOrders={(id) => router.push(`/clients/${id}/orders`)}

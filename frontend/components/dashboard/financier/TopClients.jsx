@@ -7,22 +7,56 @@ const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigit
 
 const LIMIT = 5;
 
+const NIVEAU_CONFIG = {
+  EXCELLENT: { color: '#10B981', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)' },
+  BON:       { color: '#3B82F6', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.2)' },
+  MOYEN:     { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+  RISQUÉ:    { color: '#EF4444', bg: 'rgba(239,68,68,0.1)',  border: 'rgba(239,68,68,0.2)'  },
+  NOUVEAU:   { color: '#6B7280', bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.2)' },
+};
+
+function ScoreBadge({ niveau, score }) {
+  const config = NIVEAU_CONFIG[niveau] || NIVEAU_CONFIG.NOUVEAU;
+  return (
+    <Box sx={{ textAlign: 'right', flexShrink: 0, ml: 1 }}>
+      <Chip
+        label={`${score}/100`}
+        size="small"
+        sx={{
+          bgcolor: config.bg,
+          color: config.color,
+          fontWeight: 700,
+          fontSize: '0.7rem',
+          border: `1px solid ${config.border}`,
+          height: 20,
+        }}
+      />
+      <Typography variant="caption" sx={{ color: config.color, display: 'block', fontSize: '0.65rem', mt: 0.2 }}>
+        {niveau}
+      </Typography>
+    </Box>
+  );
+}
+
 export default function TopClients({ clients = [] }) {
   const router = useRouter();
   const displayed = clients.slice(0, LIMIT);
 
+  // Détecter si les données viennent du scoring ou du kpis/top-clients
+  const isScoring = clients.length > 0 && 'score' in (clients[0] || {});
+
   return (
     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <CardContent sx={{
-        p: { xs: 2, md: 3 },
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
+      <CardContent sx={{ p: { xs: 2, md: 3 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Top clients
-          </Typography>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Top clients
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {isScoring ? 'classés par score' : 'classés par volume'}
+            </Typography>
+          </Box>
           <Chip
             label={`${clients.length} total`}
             size="small"
@@ -41,7 +75,7 @@ export default function TopClients({ clients = [] }) {
             displayed.map((client, i) => (
               <Box
                 key={client.client_id}
-                onClick={() => router.push(`/clients/${client.client_id}`)}
+                onClick={() => router.push(`/clients/${client.client_id}/wallet`)}
                 sx={{
                   display: 'flex', alignItems: 'center',
                   justifyContent: 'space-between',
@@ -67,20 +101,28 @@ export default function TopClients({ clients = [] }) {
                       {client.name}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {client.total_transactions} op{client.total_transactions > 1 ? 's' : ''}
+                      {isScoring
+                        ? `Plafond: ${fmt(client.plafond_credit)} MAD`
+                        : `${client.total_transactions} op${client.total_transactions > 1 ? 's' : ''}`
+                      }
                     </Typography>
                   </Box>
                 </Box>
-                <Box sx={{ textAlign: 'right', flexShrink: 0, ml: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {fmt(client.total_volume)} MAD
-                  </Typography>
-                  {client.total_debt > 0 && (
-                    <Typography variant="caption" sx={{ color: '#EF4444', display: 'block' }}>
-                      Dette: {fmt(client.total_debt)} MAD
+
+                {isScoring ? (
+                  <ScoreBadge niveau={client.niveau} score={client.score} />
+                ) : (
+                  <Box sx={{ textAlign: 'right', flexShrink: 0, ml: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      {fmt(client.total_volume)} MAD
                     </Typography>
-                  )}
-                </Box>
+                    {client.total_debt > 0 && (
+                      <Typography variant="caption" sx={{ color: '#EF4444', display: 'block' }}>
+                        Dette: {fmt(client.total_debt)} MAD
+                      </Typography>
+                    )}
+                  </Box>
+                )}
               </Box>
             ))
           )}

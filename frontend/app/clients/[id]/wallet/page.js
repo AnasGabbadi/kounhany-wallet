@@ -16,6 +16,7 @@ import TransactionTable from '@/components/wallet/TransactionTable';
 import ActionDialog from '@/components/wallet/ActionDialog';
 import WalletInvoices from '@/components/wallet/WalletInvoices';
 import { dolibarrApi } from '@/lib/api';
+import WalletScoring from '@/components/wallet/WalletScoring';
 
 export default function WalletPage({ params }) {
   const { id: clientId } = use(params);
@@ -178,6 +179,7 @@ export default function WalletPage({ params }) {
         <Box>
           <AccountCards accounts={wallet?.accounts} />
           <WalletStats stats={stats} />
+          <WalletScoring clientId={clientId} />
         </Box>
       )}
 
