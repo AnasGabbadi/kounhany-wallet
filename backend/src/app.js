@@ -16,6 +16,7 @@ const scimRoutes = require('./routes/scim.routes');
 const ordersRoutes = require('./routes/orders.routes');
 const logistiqueBilling = require('./jobs/logistique.billing');
 const scoringRoutes = require('./routes/scoring.routes');
+const { metricsMiddleware, metricsEndpoint } = require('./metrics');
 
 const app = express();
 
@@ -48,8 +49,15 @@ app.use('/scim/v2',
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(metricsMiddleware);
+
+app.use((req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
 
 app.use('/auth', authRoutes);
+app.get('/metrics', metricsEndpoint);
 
 app.use(jwtMiddleware);
 app.use('/clients', clientsRoutes);

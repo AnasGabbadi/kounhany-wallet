@@ -9,15 +9,14 @@ const ordersController = require('../controllers/orders.controller');
  *   description: Gestion des commandes Fleet / Logistique / B2C
  */
 
+// ── Endpoints dédiés par app (avant /:id pour éviter conflit) ─────────────────
+ 
 /**
  * @swagger
- * /orders:
+ * /orders/fleet:
  *   post:
- *     summary: Créer une commande
- *     description: |
- *       - **FLEET** → BLOCK automatique (Available → Blocked)
- *       - **LOGISTIQUE** → CONFIRM direct (Available → Receivable)
- *       - **B2C** → PAYMENT immédiat (@World → Available)
+ *     summary: Créer une commande Fleet (depuis Fleet App)
+ *     description: BLOCK automatique — Available → Blocked
  *     tags: [Orders]
  *     security:
  *       - ApiKeyAuth: []
@@ -27,37 +26,103 @@ const ordersController = require('../controllers/orders.controller');
  *         application/json:
  *           schema:
  *             type: object
- *             required: [clientId, order_type, amount, reference]
+ *             required: [clientId, amount, reference]
  *             properties:
  *               clientId:
  *                 type: string
- *                 example: client_seed_001
- *               order_type:
- *                 type: string
- *                 enum: [FLEET, LOGISTIQUE, B2C]
+ *                 example: client_xxx
  *               amount:
  *                 type: number
  *                 example: 1500
- *               description:
- *                 type: string
  *               reference:
  *                 type: string
- *                 example: CMD-2026-001
+ *                 example: FLEET-CMD-001
+ *               description:
+ *                 type: string
+ *               external_order_id:
+ *                 type: string
+ *                 example: fleet_order_123
  *               metadata:
  *                 type: object
  *     responses:
  *       201:
- *         description: Commande créée
- *       400:
- *         description: Paramètres invalides
- *       404:
- *         description: Client introuvable
- *       409:
- *         description: Référence déjà utilisée
+ *         description: Commande créée — montant bloqué
  *       422:
  *         description: Solde insuffisant
  */
-router.post('/', ordersController.createOrder);
+router.post('/fleet', ordersController.createFleetOrder);
+ 
+/**
+ * @swagger
+ * /orders/logistique:
+ *   post:
+ *     summary: Créer une commande Logistique (depuis Logistique App)
+ *     description: CONFIRM direct — Available → Receivable
+ *     tags: [Orders]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [clientId, amount, reference]
+ *             properties:
+ *               clientId:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               reference:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               external_order_id:
+ *                 type: string
+ *               metadata:
+ *                 type: object
+ *     responses:
+ *       201:
+ *         description: Mission créée — confirmée directement
+ *       422:
+ *         description: Solde insuffisant
+ */
+router.post('/logistique', ordersController.createLogistiqueOrder);
+ 
+/**
+ * @swagger
+ * /orders/b2c:
+ *   post:
+ *     summary: Créer un paiement B2C (depuis B2C App)
+ *     description: PAYMENT immédiat — @World → Available
+ *     tags: [Orders]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [clientId, amount, reference]
+ *             properties:
+ *               clientId:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               reference:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               external_order_id:
+ *                 type: string
+ *               metadata:
+ *                 type: object
+ *     responses:
+ *       201:
+ *         description: Paiement enregistré
+ */
+router.post('/b2c', ordersController.createB2COrder);
 
 /**
  * @swagger

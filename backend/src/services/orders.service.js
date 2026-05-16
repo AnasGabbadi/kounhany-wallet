@@ -5,8 +5,8 @@ const blnkService = require('./blnk.service');
 class OrdersService {
 
   // ─── CRÉER UNE COMMANDE (Fleet / Logistique / B2C) ───────────────────────
+  
   async createOrder({ clientId, order_type, amount, description, reference, metadata = {} }) {
-
     // 1. Vérifier que le client existe
     const clientCheck = await db.query(
       'SELECT client_id, name FROM clients WHERE client_id = $1 AND active = true',
@@ -66,7 +66,7 @@ class OrdersService {
       newOrder.status = 'BLOCKED';
 
     } else if (order_type === 'LOGISTIQUE') {
-      walletResult = await walletService.directConfirm( 
+      walletResult = await walletService.directConfirm(
         clientId,
         amount,
         reference,
@@ -250,6 +250,32 @@ class OrdersService {
       [orderId]
     );
     return updated.rows[0];
+  }
+
+  async createExternalOrder({ clientId, order_type, amount, reference, description, metadata = {}, external_order_id }) {
+    const result = await this.createOrder({
+      clientId,
+      order_type,
+      amount,
+      reference,
+      description,
+      metadata: { ...metadata, external_order_id },
+    });
+
+    return {
+      authorized: true,
+      wallet_order_id: result.order_id,
+      external_order_id,
+      order_type,
+      status: result.status,
+      amount_blocked: order_type === 'FLEET' ? amount : 0,
+      blnk_transaction_id: result.blnk_transaction_id,
+      message: order_type === 'FLEET'
+        ? 'Montant bloqué — en attente de confirmation service'
+        : order_type === 'LOGISTIQUE'
+          ? 'Mission confirmée directement'
+          : 'Paiement B2C enregistré',
+    };
   }
 }
 
