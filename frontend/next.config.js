@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
-  basePath: '/wallet',
-  assetPrefix: '/wallet',
+  // basePath: '/wallet',
+  // assetPrefix: '/wallet',
   compress: true,
 };
 
