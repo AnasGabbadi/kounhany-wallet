@@ -96,7 +96,6 @@ const scimController = {
     async createUser(req, res) {
         try {
             const { id, userName, name, emails, groups } = req.body;
-
             const groupNames = (groups || []).map(g => g.display);
 
             // Ignorer les admins IDP
@@ -129,35 +128,16 @@ const scimController = {
                 });
             }
 
+            // Créer client sans wallet — le groupe déterminera le type via updateGroup
             const clientId = `client_${Date.now()}`;
 
-            // Créer ledger Blnk
-            const ledger = await blnkService.createLedger(clientId, displayName);
-            const ledgerId = ledger.ledger_id;
-
-            // Créer 3 comptes Blnk
-            const [available, blocked, receivable] = await Promise.all([
-                blnkService.createBalance(ledgerId, 'MAD', 'available', clientId),
-                blnkService.createBalance(ledgerId, 'MAD', 'blocked', clientId),
-                blnkService.createBalance(ledgerId, 'MAD', 'receivable', clientId),
-            ]);
-
-            // Créer client en DB — client_type NULL
             await pool.query(
                 `INSERT INTO clients (client_id, name, email, scim_id, client_type)
-         VALUES ($1, $2, $3, $4, NULL)`,
+             VALUES ($1, $2, $3, $4, NULL)`,
                 [clientId, displayName, email, scimId]
             );
 
-            // Créer wallet
-            await pool.query(
-                `INSERT INTO client_wallets 
-         (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
-         VALUES ($1, $2, $3, $4, $5)`,
-                [clientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
-            );
-
-            console.log(`[SCIM] ✅ Client créé : ${displayName}`);
+            console.log(`[SCIM] ✅ Client créé sans wallet (en attente groupe) : ${displayName}`);
 
             const client = await pool.query(
                 'SELECT * FROM clients WHERE client_id = $1', [clientId]
@@ -349,11 +329,112 @@ const scimController = {
     },
 
     async updateGroup(req, res) {
-        res.json({
-            schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-            id: req.params.id,
-            displayName: req.body.displayName,
-        });
+        try {
+            const { displayName, members } = req.body;
+            const groupId = req.params.id;
+
+            console.log(`[SCIM] updateGroup: ${displayName} (${groupId}) — ${(members || []).length} members`);
+
+            const B2B_PARENT_GROUPS = ['Fleet', 'Logistique'];
+            const isParentGroup = B2B_PARENT_GROUPS.includes(displayName);
+            const isCompanyGroup = !isParentGroup &&
+                !['authentik Admins', 'Wallet Admins', 'Monitoring Admins', 'B2C'].includes(displayName);
+
+            // ── CAS B2B company → wallet company partagé ──
+            if (isCompanyGroup && members && members.length > 0) {
+                const companyClientId = `company_${groupId}`;
+                const companyName = displayName;
+
+                const existingCompany = await pool.query(
+                    'SELECT * FROM clients WHERE client_id = $1',
+                    [companyClientId]
+                );
+
+                if (existingCompany.rows.length === 0) {
+                    console.log(`[SCIM] Création wallet company: ${companyName}`);
+                    const ledger = await blnkService.createLedger(companyClientId, companyName);
+                    const ledgerId = ledger.ledger_id;
+
+                    const [available, blocked, receivable] = await Promise.all([
+                        blnkService.createBalance(ledgerId, 'MAD', 'available', companyClientId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'blocked', companyClientId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'receivable', companyClientId),
+                    ]);
+
+                    await pool.query(
+                        `INSERT INTO clients (client_id, name, email, scim_id, client_type)
+                     VALUES ($1, $2, $3, NULL, 'FLEET')`,
+                        [companyClientId, companyName, null]
+                    );
+
+                    await pool.query(
+                        `INSERT INTO client_wallets 
+                     (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                        [companyClientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                    );
+
+                    console.log(`[SCIM] ✅ Wallet company créé : ${companyName} (${companyClientId})`);
+                } else {
+                    console.log(`[SCIM] ℹ️ Wallet company existant : ${companyName}`);
+                }
+
+                // ── Lier tous les members au wallet company ──
+                for (const member of members) {
+                    await pool.query(
+                        'UPDATE clients SET company_client_id = $1 WHERE scim_id = $2',
+                        [companyClientId, member.value]
+                    );
+                    console.log(`[SCIM] User lié : ${member.display || member.value} → ${companyClientId}`);
+                }
+            }
+
+            // ── CAS B2C → wallet individuel ──
+            if (displayName === 'B2C' && members && members.length > 0) {
+                for (const member of members) {
+                    const clientResult = await pool.query(
+                        'SELECT * FROM clients WHERE scim_id = $1',
+                        [member.value]
+                    );
+                    if (clientResult.rows.length === 0) continue;
+                    const client = clientResult.rows[0];
+
+                    const walletCheck = await pool.query(
+                        'SELECT * FROM client_wallets WHERE client_id = $1',
+                        [client.client_id]
+                    );
+                    if (walletCheck.rows.length > 0) continue;
+
+                    const ledger = await blnkService.createLedger(client.client_id, client.name);
+                    const ledgerId = ledger.ledger_id;
+                    const [available, blocked, receivable] = await Promise.all([
+                        blnkService.createBalance(ledgerId, 'MAD', 'available', client.client_id),
+                        blnkService.createBalance(ledgerId, 'MAD', 'blocked', client.client_id),
+                        blnkService.createBalance(ledgerId, 'MAD', 'receivable', client.client_id),
+                    ]);
+                    await pool.query(
+                        `INSERT INTO client_wallets 
+                     (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                        [client.client_id, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                    );
+                    await pool.query(
+                        'UPDATE clients SET client_type = $1 WHERE client_id = $2',
+                        ['B2C', client.client_id]
+                    );
+                    console.log(`[SCIM] ✅ Wallet B2C créé : ${client.name}`);
+                }
+            }
+
+            res.json({
+                schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+                id: groupId,
+                displayName,
+            });
+        } catch (err) {
+            console.error('[SCIM] Erreur updateGroup:', err.message);
+            res.status(500).json({ error: err.message });
+        }
     },
 
     async deleteGroup(req, res) {

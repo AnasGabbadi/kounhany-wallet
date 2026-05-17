@@ -126,6 +126,39 @@ const clientsController = {
       });
     } catch (err) { next(err); }
   },
+
+  async getCompanyWallet(req, res) {
+    try {
+      const { email } = req.params;
+      const result = await pool.query(
+        'SELECT client_id, company_client_id FROM clients WHERE email = $1 AND active = true',
+        [email]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Client introuvable' });
+      }
+      const client = result.rows[0];
+      const walletId = client.company_client_id || client.client_id;
+      return res.json({ success: true, data: { client_id: walletId } });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  async getCompanyMembers(req, res, next) {
+    try {
+      const { clientId } = req.params;
+      const result = await pool.query(
+        `SELECT client_id, name, email, phone, active, created_at
+              FROM clients 
+              WHERE company_client_id = $1
+              AND client_id NOT LIKE 'company_%'
+              ORDER BY created_at DESC`,
+        [clientId]
+      );
+      res.json({ success: true, data: result.rows });
+    } catch (err) { next(err); }
+  },
 };
 
 

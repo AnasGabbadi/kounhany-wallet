@@ -1,33 +1,142 @@
 'use client';
 import {
   Drawer, List, ListItem, ListItemButton, ListItemIcon,
-  ListItemText, Box, Typography, Divider, Avatar,
+  ListItemText, Box, Typography, Divider, Avatar, Collapse,
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import LogoutIcon from '@mui/icons-material/Logout';
+import BusinessIcon from '@mui/icons-material/Business';
+import PersonIcon from '@mui/icons-material/Person';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 import { usePathname, useRouter } from 'next/navigation';
 import { authService } from '@/lib/auth';
 import { useEffect, useState } from 'react';
-import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 
 const DRAWER_WIDTH = 260;
 
-const menuItems = [
+const MENU_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { label: 'Clients', icon: <PeopleIcon />, path: '/clients' },
+  {
+    label: 'Clients', icon: <PeopleIcon />, path: '/clients',
+    children: [
+      { label: 'Comptes entreprises', icon: <BusinessIcon />, path: '/clients/organisations' },
+      { label: 'Comptes particuliers', icon: <PersonIcon />, path: '/clients/b2c' },
+    ],
+  },
   { label: 'Commandes', icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
   { label: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
 ];
+
+function MenuItem({ item, pathname, router }) {
+  const hasChildren = !!item.children;
+  const isActive = pathname === item.path || 
+    (hasChildren && item.children.some(c => pathname === c.path));
+  const [open, setOpen] = useState(isActive);
+
+  const active = pathname === item.path && !hasChildren;
+
+  const handleClick = () => {
+    if (hasChildren) {
+      setOpen(prev => !prev);
+    } else {
+      router.push(item.path);
+    }
+  };
+
+  return (
+    <>
+      <ListItem disablePadding sx={{ mb: 0.5 }}>
+        <ListItemButton
+          onClick={handleClick}
+          sx={{
+            borderRadius: 2,
+            bgcolor: active ? 'rgba(250,195,69,0.15)' : 'transparent',
+            border: active ? '1px solid rgba(250,195,69,0.2)' : '1px solid transparent',
+            '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
+            py: 1.2,
+          }}
+        >
+          <ListItemIcon sx={{
+            color: isActive ? '#FAC345' : 'rgba(255,255,255,0.45)',
+            minWidth: 38,
+          }}>
+            {item.icon}
+          </ListItemIcon>
+          <ListItemText
+            primary={item.label}
+            primaryTypographyProps={{
+              fontWeight: isActive ? 700 : 400,
+              color: isActive ? '#FAC345' : 'rgba(255,255,255,0.75)',
+              fontSize: '0.88rem',
+            }}
+          />
+          {hasChildren && (
+            open
+              ? <ExpandLessIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.4)' }} />
+              : <ExpandMoreIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.4)' }} />
+          )}
+          {active && (
+            <Box sx={{ width: 3, height: 20, bgcolor: '#FAC345', borderRadius: 2 }} />
+          )}
+        </ListItemButton>
+      </ListItem>
+
+      {hasChildren && (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          <List disablePadding sx={{ pl: 2, mb: 0.5 }}>
+            {item.children.map((child) => {
+              const childActive = pathname === child.path;
+              return (
+                <ListItem key={child.path} disablePadding sx={{ mb: 0.5 }}>
+                  <ListItemButton
+                    onClick={() => router.push(child.path)}
+                    sx={{
+                      borderRadius: 2,
+                      bgcolor: childActive ? 'rgba(250,195,69,0.15)' : 'transparent',
+                      border: childActive ? '1px solid rgba(250,195,69,0.2)' : '1px solid transparent',
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
+                      py: 1,
+                    }}
+                  >
+                    <ListItemIcon sx={{
+                      color: childActive ? '#FAC345' : 'rgba(255,255,255,0.35)',
+                      minWidth: 34,
+                    }}>
+                      {child.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={child.label}
+                      primaryTypographyProps={{
+                        fontWeight: childActive ? 700 : 400,
+                        color: childActive ? '#FAC345' : 'rgba(255,255,255,0.6)',
+                        fontSize: '0.82rem',
+                      }}
+                    />
+                    {childActive && (
+                      <Box sx={{ width: 3, height: 16, bgcolor: '#FAC345', borderRadius: 2 }} />
+                    )}
+                  </ListItemButton>
+                </ListItem>
+              );
+            })}
+          </List>
+        </Collapse>
+      )}
+    </>
+  );
+}
 
 export default function Sidebar({ open }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
-  
+
   useEffect(() => {
     setMounted(true);
     setUser(authService.getUser());
@@ -62,10 +171,8 @@ export default function Sidebar({ open }) {
       {/* Logo */}
       <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box sx={{
-          width: 36, height: 36, borderRadius: 2,
-          bgcolor: '#FAC345',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
+          width: 36, height: 36, borderRadius: 2, bgcolor: '#FAC345',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
           <AccountBalanceWalletIcon sx={{ fontSize: 20, color: '#212529' }} />
         </Box>
@@ -83,45 +190,9 @@ export default function Sidebar({ open }) {
 
       {/* Menu */}
       <List sx={{ px: 1.5, pt: 2, flex: 1 }}>
-        {menuItems.map((item) => {
-          const active = pathname === item.path;
-          return (
-            <ListItem key={item.path} disablePadding sx={{ mb: 0.5 }}>
-              <ListItemButton
-                onClick={() => router.push(item.path)}
-                sx={{
-                  borderRadius: 2,
-                  bgcolor: active ? 'rgba(250,195,69,0.15)' : 'transparent',
-                  border: active ? '1px solid rgba(250,195,69,0.2)' : '1px solid transparent',
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
-                  py: 1.2,
-                }}
-              >
-                <ListItemIcon sx={{
-                  color: active ? '#FAC345' : 'rgba(255,255,255,0.45)',
-                  minWidth: 38,
-                }}>
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{
-                    fontWeight: active ? 700 : 400,
-                    color: active ? '#FAC345' : 'rgba(255,255,255,0.75)',
-                    fontSize: '0.88rem',
-                  }}
-                />
-                {active && (
-                  <Box sx={{
-                    width: 3, height: 20,
-                    bgcolor: '#FAC345',
-                    borderRadius: 2,
-                  }} />
-                )}
-              </ListItemButton>
-            </ListItem>
-          );
-        })}
+        {MENU_ITEMS.map((item) => (
+          <MenuItem key={item.path} item={item} pathname={pathname} router={router} />
+        ))}
       </List>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mx: 2 }} />
@@ -129,20 +200,11 @@ export default function Sidebar({ open }) {
       {/* User info + logout */}
       <Box sx={{ p: 2 }}>
         <Box sx={{
-          display: 'flex', alignItems: 'center', gap: 1.5,
-          p: 1.5,
-          bgcolor: 'rgba(255,255,255,0.04)',
-          borderRadius: 2,
+          display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5,
+          bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2,
           border: '1px solid rgba(255,255,255,0.06)',
         }}>
-          <Avatar sx={{
-            width: 36, height: 36,
-            bgcolor: '#FAC345',
-            color: '#212529',
-            fontWeight: 700,
-            fontSize: '0.85rem',
-            flexShrink: 0,
-          }}>
+          <Avatar sx={{ width: 36, height: 36, bgcolor: '#FAC345', color: '#212529', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
             {user?.name?.charAt(0).toUpperCase() || user?.preferred_username?.charAt(0).toUpperCase() || 'A'}
           </Avatar>
           <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -156,12 +218,10 @@ export default function Sidebar({ open }) {
           <Box
             onClick={handleLogout}
             sx={{
-              cursor: 'pointer',
-              color: 'rgba(255,255,255,0.3)',
+              cursor: 'pointer', color: 'rgba(255,255,255,0.3)',
               display: 'flex', alignItems: 'center',
               '&:hover': { color: '#EF4444' },
-              transition: 'color 0.2s',
-              flexShrink: 0,
+              transition: 'color 0.2s', flexShrink: 0,
             }}
           >
             <LogoutIcon sx={{ fontSize: 18 }} />

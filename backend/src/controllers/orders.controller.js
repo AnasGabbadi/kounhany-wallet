@@ -20,7 +20,7 @@ const handleExternalOrder = async (req, res, next, order_type) => {
       return res.status(400).json({ success: false, error: validationError });
     }
 
-    const { clientId, amount, reference, description, metadata, external_order_id } = req.body;
+    const { clientId, amount, reference, description, metadata, external_order_id, created_by } = req.body;
 
     const result = await ordersService.createExternalOrder({
       clientId,
@@ -30,6 +30,7 @@ const handleExternalOrder = async (req, res, next, order_type) => {
       description,
       metadata,
       external_order_id,
+      created_by,
     });
 
     res.status(201).json({ success: true, ...result });

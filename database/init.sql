@@ -86,3 +86,12 @@ DO $$ BEGIN
   ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_client_type_check;
 EXCEPTION WHEN undefined_object THEN NULL;
 END $$;
+
+-- ─── COMPANY MAPPING (B2B) ────────────────────────────────────
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS company_client_id VARCHAR(100) NULL;
+CREATE INDEX IF NOT EXISTS idx_clients_company_client_id ON clients(company_client_id);
+
+-- ─── CREATED BY (TRAÇABILITÉ MEMBRE) ─────────────────────────
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by VARCHAR(255) NULL;
+COMMENT ON COLUMN orders.created_by IS 'Email ou nom du membre qui a créé la commande';
+CREATE INDEX IF NOT EXISTS idx_orders_created_by ON orders(created_by);

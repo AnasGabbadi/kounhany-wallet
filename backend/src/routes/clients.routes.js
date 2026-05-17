@@ -91,4 +91,81 @@ router.get('/:clientId', clientsController.getOne);
  */
 router.get('/:clientId/wallet', clientsController.getWallet);
 
+/**
+ * @swagger
+ * /clients/by-email/{email}/company-wallet:
+ *   get:
+ *     summary: Récupère le wallet company d'un client via son email
+ *     tags: [Clients]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Wallet company retourné
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       404:
+ *         description: Client ou wallet introuvable
+ */
+router.get('/by-email/:email/company-wallet', clientsController.getCompanyWallet);
+
+/**
+ * @swagger
+ * /clients/{clientId}/members:
+ *   get:
+ *     summary: Lister les membres de la société d'un client
+ *     tags: [Clients]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: clientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Liste des membres retournée
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       member_id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                       active:
+ *                         type: boolean
+ *                       scim_id:
+ *                         type: string
+ *       404:
+ *         description: Client ou membres introuvables
+ */
+router.get('/:clientId/members', clientsController.getCompanyMembers);
+
 module.exports = router;

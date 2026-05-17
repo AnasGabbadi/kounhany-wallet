@@ -15,17 +15,17 @@ import OrderDetailDialog from '@/components/orders/OrderDetailDialog';
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
 
 const STATUS_CONFIG = {
-  BLOCKED:   { label: 'Bloqué',     bg: 'rgba(245,158,11,0.1)',  color: '#F59E0B' },
-  CONFIRMED: { label: 'Confirmé',   bg: 'rgba(59,130,246,0.1)',  color: '#3B82F6' },
-  CANCELLED: { label: 'Annulé',     bg: 'rgba(239,68,68,0.1)',   color: '#EF4444' },
-  PAID:      { label: 'Payé',       bg: 'rgba(16,185,129,0.1)',  color: '#10B981' },
-  PENDING:   { label: 'En attente', bg: 'rgba(107,114,128,0.1)', color: '#6B7280' },
+  BLOCKED: { label: 'Bloqué', bg: 'rgba(245,158,11,0.1)', color: '#F59E0B' },
+  CONFIRMED: { label: 'Confirmé', bg: 'rgba(59,130,246,0.1)', color: '#3B82F6' },
+  CANCELLED: { label: 'Annulé', bg: 'rgba(239,68,68,0.1)', color: '#EF4444' },
+  PAID: { label: 'Payé', bg: 'rgba(16,185,129,0.1)', color: '#10B981' },
+  PENDING: { label: 'En attente', bg: 'rgba(107,114,128,0.1)', color: '#6B7280' },
 };
 
 const TYPE_CONFIG = {
-  FLEET:      { label: 'Fleet',      bg: '#FAC34515', color: '#B8860B' },
+  FLEET: { label: 'Fleet', bg: '#FAC34515', color: '#B8860B' },
   LOGISTIQUE: { label: 'Logistique', bg: '#3B82F615', color: '#3B82F6' },
-  B2C:        { label: 'B2C',        bg: '#10B98115', color: '#10B981' },
+  B2C: { label: 'B2C', bg: '#10B98115', color: '#10B981' },
 };
 
 export default function OrdersTable({ orders = [], onConfirm, onCancel, actionLoading, showClient = false }) {
@@ -36,8 +36,8 @@ export default function OrdersTable({ orders = [], onConfirm, onCancel, actionLo
   const paginated = orders.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const headers = showClient
-    ? ['Client', 'Réf.', 'Type', 'Montant', 'Description', 'Statut', 'Date', 'Actions']
-    : ['Réf.', 'Type', 'Montant', 'Description', 'Statut', 'Date', 'Actions'];
+    ? ['Client', 'Réf.', 'Type', 'Montant', 'Description', 'Statut', 'Créé par', 'Date', 'Actions']
+    : ['Réf.', 'Type', 'Montant', 'Description', 'Statut', 'Créé par', 'Date', 'Actions'];
 
   return (
     <>
@@ -132,6 +132,19 @@ export default function OrdersTable({ orders = [], onConfirm, onCancel, actionLo
                         <TableCell>
                           <Chip label={status.label} size="small"
                             sx={{ bgcolor: status.bg, color: status.color, fontWeight: 700, fontSize: '0.68rem' }} />
+                        </TableCell>
+
+                        {/* Créé par */}
+                        <TableCell>
+                          {order.created_by ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                              <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 120 }}>
+                                {order.created_by.split('@')[0]}
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.disabled">—</Typography>
+                          )}
                         </TableCell>
 
                         <TableCell>

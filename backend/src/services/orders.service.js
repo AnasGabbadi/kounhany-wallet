@@ -6,7 +6,7 @@ class OrdersService {
 
   // ─── CRÉER UNE COMMANDE (Fleet / Logistique / B2C) ───────────────────────
   
-  async createOrder({ clientId, order_type, amount, description, reference, metadata = {} }) {
+  async createOrder({ clientId, order_type, amount, description, reference, metadata = {}, created_by = null }) {
     // 1. Vérifier que le client existe
     const clientCheck = await db.query(
       'SELECT client_id, name FROM clients WHERE client_id = $1 AND active = true',
@@ -41,10 +41,10 @@ class OrdersService {
 
     // 4. Insérer la commande en DB
     const orderResult = await db.query(`
-      INSERT INTO orders (client_id, order_type, amount, description, reference, status, metadata)
-      VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)
+      INSERT INTO orders (client_id, order_type, amount, description, reference, status, metadata, created_by)
+      VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7)
       RETURNING *
-    `, [clientId, order_type, amount, description, reference, JSON.stringify(metadata)]);
+    `, [clientId, order_type, amount, description, reference, JSON.stringify(metadata), created_by || null]);
 
     const newOrder = orderResult.rows[0];
 
@@ -252,13 +252,14 @@ class OrdersService {
     return updated.rows[0];
   }
 
-  async createExternalOrder({ clientId, order_type, amount, reference, description, metadata = {}, external_order_id }) {
+  async createExternalOrder({ clientId, order_type, amount, reference, description, metadata = {}, external_order_id, created_by }) {
     const result = await this.createOrder({
       clientId,
       order_type,
       amount,
       reference,
       description,
+      created_by,
       metadata: { ...metadata, external_order_id },
     });
 

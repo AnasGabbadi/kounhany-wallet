@@ -44,7 +44,7 @@ const ScoreChip = ({ score, niveau }) => {
   );
 };
 
-export default function ClientsTable({ clients, balances, balancesLoading, scores = {}, scoresLoading, onDetail, onWallet, onOrders }) {
+export default function ClientsTable({ clients, balances, balancesLoading, scores = {}, scoresLoading, onDetail, onWallet, onOrders, showContact = true }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(8);
 
@@ -58,7 +58,7 @@ export default function ClientsTable({ clients, balances, balancesLoading, score
         <Table>
           <TableHead>
             <TableRow>
-              {['Client', 'Statut', 'Contact', 'Disponible', 'Bloqué', 'Créances', 'Encours total', 'Score', 'Actions'].map((h) => (
+              {['Client', 'Statut', ...(showContact ? ['Contact'] : []), 'Disponible', 'Bloqué', 'Créances', 'Encours total', 'Score', 'Actions'].map((h) => (
                 <TableCell key={h} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
                   {h}
                 </TableCell>
@@ -112,10 +112,12 @@ export default function ClientsTable({ clients, balances, balancesLoading, score
                       />
                     </TableCell>
 
-                    <TableCell>
-                      <Typography variant="body2">{client.email || '—'}</Typography>
-                      <Typography variant="caption" color="text.secondary">{client.phone || ''}</Typography>
-                    </TableCell>
+                    {showContact && (
+                      <TableCell>
+                        <Typography variant="body2">{client.email || '—'}</Typography>
+                        <Typography variant="caption" color="text.secondary">{client.phone || ''}</Typography>
+                      </TableCell>
+                    )}
 
                     <TableCell>
                       {balancesLoading && !bal ? <Skeleton width={80} height={24} /> : bal ? <BalanceChip value={bal.available} color="#10B981" /> : '—'}

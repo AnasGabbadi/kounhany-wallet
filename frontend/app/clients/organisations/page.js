@@ -3,22 +3,18 @@ import useSWR from 'swr';
 import { useState } from 'react';
 import {
   Box, Typography, Card, CardContent,
-  Alert, CircularProgress, TextField, InputAdornment, Snackbar,
+  Alert, CircularProgress, TextField, InputAdornment,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { useRouter } from 'next/navigation';
 import { kpisApi } from '@/lib/api';
 import ClientsTable from '@/components/clients/ClientsTable';
-import ClientDetailDialog from '@/components/clients/ClientDetailDialog';
 
-export default function ClientsPage() {
+export default function OrganisationsPage() {
   const [search, setSearch] = useState('');
-  const [selectedClient, setSelectedClient] = useState(null);
-  const [successMsg, setSuccessMsg] = useState(null);
-  const [error, setError] = useState(null);
   const router = useRouter();
 
-  const { data: clients = [], isLoading, mutate: mutateClients } = useSWR(
+  const { data: clients = [], isLoading } = useSWR(
     'clients', () => kpisApi.clients(), { refreshInterval: 30000 }
   );
 
@@ -38,52 +34,22 @@ export default function ClientsPage() {
     return acc;
   }, {});
 
-  const handleCreateWallet = async (client) => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/scim/v2/Users`, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer scim-secret-token-2024',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
-          id: client.scim_id || client.client_id,
-          userName: client.email || client.client_id,
-          name: { formatted: client.name },
-          emails: [{ value: client.email || '', primary: true }],
-          active: true,
-          groups: [],
-        }),
-      });
-      if (res.status === 201 || res.status === 409) {
-        setSuccessMsg(`Wallet créé pour ${client.name}`);
-        mutateClients();
-      } else {
-        setError('Erreur lors de la création du wallet');
-      }
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const filtered = clients.filter((c) =>
-    c.name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.email?.toLowerCase().includes(search.toLowerCase()) ||
-    c.client_id?.toLowerCase().includes(search.toLowerCase())
-  );
+  const organisations = clients
+    .filter(c => c.client_id?.startsWith('company_'))
+    .filter(c =>
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.email?.toLowerCase().includes(search.toLowerCase()) ||
+      c.client_id?.toLowerCase().includes(search.toLowerCase())
+    );
 
   return (
     <Box>
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>Clients</Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700 }}>Comptes entreprises</Typography>
         <Typography variant="body2" color="text.secondary">
-          {clients.length} client{clients.length > 1 ? 's' : ''} enregistré{clients.length > 1 ? 's' : ''}
-          {' '}— synchronisés depuis Authentik
+          {organisations.length} entreprise{organisations.length > 1 ? 's' : ''} — wallets partagés par organisation
         </Typography>
       </Box>
-
-      {error && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>{error}</Alert>}
 
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ p: 2, pb: '16px !important' }}>
@@ -112,32 +78,19 @@ export default function ClientsPage() {
             </Box>
           ) : (
             <ClientsTable
-              clients={filtered}
+              clients={organisations}
               balances={balances}
               balancesLoading={balancesLoading}
               scores={scores}
               scoresLoading={scoresLoading}
-              onDetail={(client) => setSelectedClient(client)}
+              onDetail={(client) => router.push(`/clients/${client.client_id}`)}
               onWallet={(id) => router.push(`/clients/${id}/wallet`)}
               onOrders={(id) => router.push(`/clients/${id}/orders`)}
-              onCreateWallet={handleCreateWallet}
+              showContact={false}
             />
           )}
         </CardContent>
       </Card>
-
-      <ClientDetailDialog
-        client={selectedClient}
-        balance={selectedClient ? balances[selectedClient.client_id] : null}
-        onClose={() => setSelectedClient(null)}
-      />
-
-      <Snackbar
-        open={!!successMsg}
-        autoHideDuration={3000}
-        onClose={() => setSuccessMsg(null)}
-        message={successMsg}
-      />
     </Box>
   );
 }
