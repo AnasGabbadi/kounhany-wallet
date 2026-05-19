@@ -7,7 +7,7 @@ export default function WalletHeader({ client, wallet, clientId, router }) {
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
       <Button
         startIcon={<ArrowBackIcon />}
-        onClick={() => router.push(`/clients`)}
+        onClick={() => router.push(`/clients/organisations`)}
         sx={{ color: 'text.secondary', flexShrink: 0 }}
       >
         Retour

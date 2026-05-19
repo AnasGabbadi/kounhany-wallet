@@ -149,11 +149,16 @@ const clientsController = {
     try {
       const { clientId } = req.params;
       const result = await pool.query(
-        `SELECT client_id, name, email, phone, active, created_at
-              FROM clients 
-              WHERE company_client_id = $1
-              AND client_id NOT LIKE 'company_%'
-              ORDER BY created_at DESC`,
+        `SELECT 
+                c.client_id, c.name, c.email, c.phone, c.active, c.created_at,
+                COUNT(o.id) as total_orders,
+                COALESCE(SUM(o.amount), 0) as total_amount
+             FROM clients c
+             LEFT JOIN orders o ON o.created_by = c.email
+             WHERE c.company_client_id = $1
+             AND c.client_id NOT LIKE 'company_%'
+             GROUP BY c.client_id, c.name, c.email, c.phone, c.active, c.created_at
+             ORDER BY c.created_at DESC`,
         [clientId]
       );
       res.json({ success: true, data: result.rows });

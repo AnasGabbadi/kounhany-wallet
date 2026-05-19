@@ -25,7 +25,7 @@ export default function MembersTable({ members = [] }) {
                 <Table size="small">
                     <TableHead>
                         <TableRow>
-                            {['Membre', 'Email', 'Téléphone', 'Statut', 'Depuis'].map(h => (
+                            {['Membre', 'Email', 'Commandes', 'Total consommé', 'Statut', 'Depuis'].map(h => (
                                 <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.78rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
                                     {h}
                                 </TableCell>
@@ -51,7 +51,16 @@ export default function MembersTable({ members = [] }) {
                                     <Typography variant="body2">{m.email || '—'}</Typography>
                                 </TableCell>
                                 <TableCell>
-                                    <Typography variant="body2" color="text.secondary">{m.phone || '—'}</Typography>
+                                    <Chip
+                                        label={`${m.total_orders} commande${m.total_orders > 1 ? 's' : ''}`}
+                                        size="small"
+                                        sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: '#3B82F6', fontWeight: 700, fontSize: '0.68rem' }}
+                                    />
+                                </TableCell>
+                                <TableCell>
+                                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#10B981' }}>
+                                        {Number(m.total_amount || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD
+                                    </Typography>
                                 </TableCell>
                                 <TableCell>
                                     <Chip
