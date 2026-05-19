@@ -98,6 +98,23 @@ const dolibarrController = {
       });
     } catch (err) { next(err); }
   },
+
+  async webhook(req, res, next) {
+    try {
+      const { action, object, object_id } = req.body;
+      console.log(`[Dolibarr Webhook] Action: ${action} — Object: ${object} — ID: ${object_id}`);
+
+      // Déclencher sync uniquement si paiement ajouté sur une facture
+      if (action === 'PAYMENT_ADD' || action === 'BILL_PAYED') {
+        await dolibarrSync.syncPayments();
+        console.log(`[Dolibarr Webhook] ✅ Sync déclenché après paiement`);
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = dolibarrController;

@@ -98,9 +98,9 @@ const dolibarrSync = {
         }
 
         // ─── CAS FLEET — facture par commande ─────────────────────────
-        const orderRef = invoice.ref_client.startsWith('CONFIRM-')
-          ? 'FLEET-' + invoice.ref_client.replace(/^CONFIRM-/, '')
-          : invoice.ref_client;
+        const orderRef = invoice.ref_client
+          .replace(/^CONFIRM-FLEET-/, 'FLEET-')
+          .replace(/^CONFIRM-/, 'FLEET-');
 
         const order = await pool.query(
           `SELECT o.*, c.client_id FROM orders o
@@ -116,6 +116,15 @@ const dolibarrSync = {
 
         const o = order.rows[0];
 
+        // 1. Solder la créance (Receivable → @World)
+        await walletService.externalDebt(
+          o.client_id,
+          parseFloat(invoice.total_ttc),
+          `DEBT-${ref}`,
+          `Solde créance — facture ${invoice.ref}`
+        );
+
+        // 2. Recharger le disponible (@World → Available)
         await walletService.pay(
           o.client_id,
           parseFloat(invoice.total_ttc),

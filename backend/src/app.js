@@ -17,6 +17,7 @@ const ordersRoutes = require('./routes/orders.routes');
 const logistiqueBilling = require('./jobs/logistique.billing');
 const scoringRoutes = require('./routes/scoring.routes');
 const { metricsMiddleware, metricsEndpoint } = require('./metrics');
+const dolibarrSync = require('./services/dolibarr.sync');
 
 const app = express();
 
@@ -58,7 +59,19 @@ app.use((req, res, next) => {
 
 app.use('/auth', authRoutes);
 app.get('/metrics', metricsEndpoint);
-
+app.post('/dolibarr/webhook', async (req, res) => {
+  try {
+    const { action, object, object_id } = req.body;
+    console.log(`[Dolibarr Webhook] Action: ${action} — Object: ${object} — ID: ${object_id}`);
+    if (action === 'PAYMENT_ADD' || action === 'BILL_PAYED') {
+      await dolibarrSync.syncPayments();
+      console.log(`[Dolibarr Webhook] ✅ Sync déclenché`);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 app.use(jwtMiddleware);
 app.use('/clients', clientsRoutes);
 app.use('/wallet', walletRoutes);
