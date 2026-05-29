@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS clients (
   email VARCHAR(255),
   phone VARCHAR(50),
   scim_id VARCHAR(100) UNIQUE,
-  client_type VARCHAR(20) DEFAULT NULL,  -- NULL par défaut, géré par order_type
+  client_type VARCHAR(20) DEFAULT NULL,
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -72,14 +72,14 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- ─── INDEX ────────────────────────────────────────────────────
+-- ─── INDEX ORDERS ─────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_orders_client_id  ON orders(client_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status     ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_type       ON orders(order_type);
 CREATE INDEX IF NOT EXISTS idx_orders_reference  ON orders(reference);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 
--- ─── MIGRATION DB EXISTANTE ───────────────────────────────────
+-- ─── MIGRATIONS CLIENTS ───────────────────────────────────────
 ALTER TABLE clients ALTER COLUMN client_type DROP DEFAULT;
 ALTER TABLE clients ALTER COLUMN client_type TYPE VARCHAR(20);
 DO $$ BEGIN
@@ -87,11 +87,60 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_object THEN NULL;
 END $$;
 
--- ─── COMPANY MAPPING (B2B) ────────────────────────────────────
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS company_client_id VARCHAR(100) NULL;
 CREATE INDEX IF NOT EXISTS idx_clients_company_client_id ON clients(company_client_id);
 
--- ─── CREATED BY (TRAÇABILITÉ MEMBRE) ─────────────────────────
+-- ─── MIGRATIONS ORDERS ────────────────────────────────────────
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by VARCHAR(255) NULL;
 COMMENT ON COLUMN orders.created_by IS 'Email ou nom du membre qui a créé la commande';
 CREATE INDEX IF NOT EXISTS idx_orders_created_by ON orders(created_by);
+
+-- ─── PRESTATAIRES ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS prestataires (
+  id SERIAL PRIMARY KEY,
+  prestataire_id VARCHAR(100) UNIQUE NOT NULL,
+  garage_uuid UUID NULL,                          -- NULL pour les Providers pièces
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255),
+  phone VARCHAR(50),
+  type VARCHAR(20) DEFAULT 'GARAGE'
+    CHECK (type IN ('GARAGE', 'PROVIDER')),       -- GARAGE ou PROVIDER
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS prestataire_wallets (
+  id SERIAL PRIMARY KEY,
+  prestataire_id VARCHAR(100) UNIQUE NOT NULL REFERENCES prestataires(prestataire_id),
+  ledger_id VARCHAR(255) NOT NULL,
+  available_balance_id VARCHAR(255) NOT NULL,
+  blocked_balance_id VARCHAR(255) NOT NULL,
+  receivable_balance_id VARCHAR(255) NOT NULL,
+  currency VARCHAR(10) DEFAULT 'MAD',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS prestataire_orders (
+  id SERIAL PRIMARY KEY,
+  prestataire_id VARCHAR(100) NOT NULL REFERENCES prestataires(prestataire_id),
+  maintenance_ref VARCHAR(255),
+  amount NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+  reference VARCHAR(255) UNIQUE NOT NULL,
+  status VARCHAR(20) DEFAULT 'CONFIRMED'
+    CHECK (status IN ('CONFIRMED', 'PAID', 'CANCELLED')),
+  dolibarr_invoice_id VARCHAR(255),
+  blnk_transaction_id VARCHAR(255),
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_prestataire_orders_prestataire_id ON prestataire_orders(prestataire_id);
+CREATE INDEX IF NOT EXISTS idx_prestataire_orders_reference ON prestataire_orders(reference);
+CREATE INDEX IF NOT EXISTS idx_prestataire_orders_status ON prestataire_orders(status);
+
+-- ─── MIGRATIONS PRESTATAIRES (sur DB existante) ───────────────
+ALTER TABLE prestataires ALTER COLUMN garage_uuid DROP NOT NULL;
+ALTER TABLE prestataires ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'GARAGE'
+  CHECK (type IN ('GARAGE', 'PROVIDER'));

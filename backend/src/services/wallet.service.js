@@ -189,12 +189,21 @@ const walletService = {
       'SELECT * FROM client_wallets WHERE client_id = $1',
       [clientId]
     );
-    if (result.rows.length === 0) {
-      const error = new Error(`Wallet introuvable pour le client ${clientId}`);
-      error.status = 404;
-      throw error;
+    if (result.rows.length > 0) return result.rows[0];
+
+    // Fallback — chercher dans prestataire_wallets
+    const prestaResult = await pool.query(
+      'SELECT * FROM prestataire_wallets WHERE prestataire_id = $1',
+      [clientId]
+    );
+    if (prestaResult.rows.length > 0) {
+      // Normaliser le champ client_id pour compatibilité
+      return { ...prestaResult.rows[0], client_id: prestaResult.rows[0].prestataire_id };
     }
-    return result.rows[0];
+
+    const error = new Error(`Wallet introuvable pour le client ${clientId}`);
+    error.status = 404;
+    throw error;
   },
 
   // Récupérer tous les soldes d'un client

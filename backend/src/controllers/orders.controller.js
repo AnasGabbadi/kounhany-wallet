@@ -1,4 +1,5 @@
 const ordersService = require('../services/orders.service');
+const pool = require('../config/db');
 
 // ── Validation commune ────────────────────────────────────────────────────────
 const validateOrderBody = (body) => {
@@ -114,4 +115,20 @@ exports.cancelOrder = async (req, res, next) => {
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   }
+};
+
+exports.updateMetadata = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { metadata } = req.body;
+    const result = await pool.query(
+      `UPDATE orders 
+       SET metadata = metadata || $1::jsonb, updated_at = NOW()
+       WHERE id = $2 RETURNING *`,
+      [JSON.stringify(metadata), id]
+    );
+    if (result.rows.length === 0)
+      return res.status(404).json({ success: false, message: 'Order introuvable' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) { next(err); }
 };

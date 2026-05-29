@@ -292,4 +292,6 @@ router.post('/:id/confirm', ordersController.confirmOrder);
  */
 router.post('/:id/cancel', ordersController.cancelOrder);
 
+router.patch('/:id/metadata', ordersController.updateMetadata);
+
 module.exports = router;

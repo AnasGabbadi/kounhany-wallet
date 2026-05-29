@@ -35,9 +35,13 @@ const kpisService = {
                     COUNT(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as new_this_month
                 FROM clients
             `),
+            // ✅ UNION ALL — client_wallets + prestataire_wallets
             pool.query(`
                 SELECT available_balance_id, blocked_balance_id, receivable_balance_id
                 FROM client_wallets
+                UNION ALL
+                SELECT available_balance_id, blocked_balance_id, receivable_balance_id
+                FROM prestataire_wallets
             `),
         ]);
 
@@ -104,7 +108,7 @@ const kpisService = {
         };
     },
 
-    // Recalcul des soldes Blnk — exécuté en arrière-plan
+    // ✅ Recalcul des soldes Blnk — client_wallets + prestataire_wallets
     async _refreshBalanceCache(walletRows) {
         try {
             let totalAvailable = 0, totalBlocked = 0, totalReceivable = 0;
@@ -170,6 +174,7 @@ const kpisService = {
                 MAX(tl.created_at) as last_activity
             FROM clients c
             LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
+            WHERE c.client_type != 'PRESTATAIRE' OR c.client_type IS NULL
             GROUP BY c.client_id, c.name, c.email
             ORDER BY total_volume DESC
             LIMIT 10
@@ -203,6 +208,7 @@ const kpisService = {
                     COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_PAYMENT' THEN tl.amount::numeric ELSE 0 END), 0) as net_debt
                 FROM clients c
                 LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
+                WHERE c.client_type != 'PRESTATAIRE' OR c.client_type IS NULL
                 GROUP BY c.client_id, c.name
                 HAVING (
                     COALESCE(SUM(CASE WHEN tl.type = 'EXTERNAL_DEBT' THEN tl.amount::numeric ELSE 0 END), 0) -
@@ -215,6 +221,7 @@ const kpisService = {
                 FROM clients c
                 JOIN client_wallets cw ON c.client_id = cw.client_id
                 LEFT JOIN transaction_logs tl ON c.client_id = tl.client_id
+                WHERE c.client_type != 'PRESTATAIRE' OR c.client_type IS NULL
                 GROUP BY c.client_id, c.name, cw.available_balance_id
                 HAVING COALESCE(SUM(CASE WHEN tl.type = 'BLOCK' THEN tl.amount::numeric ELSE 0 END), 0) > 0
             `),

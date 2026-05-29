@@ -13,11 +13,14 @@ const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigit
 
 const statusConfig = {
     unpaid: { label: 'Non payée', color: '#EF4444', bg: 'rgba(239,68,68,0.1)' },
-    paid: { label: 'Payée', color: '#10B981', bg: 'rgba(16,185,129,0.1)' },
-    draft: { label: 'Brouillon', color: '#6B7280', bg: 'rgba(107,114,128,0.1)' },
+    paid:   { label: 'Payée',     color: '#10B981', bg: 'rgba(16,185,129,0.1)' },
+    draft:  { label: 'Brouillon', color: '#6B7280', bg: 'rgba(107,114,128,0.1)' },
 };
 
-export default function WalletInvoices({ clientId, onCountChange }) {
+// Par défaut — factures clients Dolibarr
+const defaultFetchFn = (clientId) => dolibarrApi.clientInvoices(clientId);
+
+export default function WalletInvoices({ clientId, fetchFn, onCountChange }) {
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -25,14 +28,17 @@ export default function WalletInvoices({ clientId, onCountChange }) {
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(15);
 
+    // Utilise fetchFn si fourni, sinon fallback sur clientInvoices
+    const fetch = fetchFn || defaultFetchFn;
+
     const fetchInvoices = async () => {
         try {
             setLoading(true);
             setError(null);
-            const res = await dolibarrApi.clientInvoices(clientId);
-            const data = res.data.invoices || [];
+            const res = await fetch(clientId);
+            const data = res?.data?.invoices || [];
             setInvoices(data);
-            onCountChange?.(data.length); // ← ajouter
+            onCountChange?.(data.length);
         } catch (err) {
             setError('Impossible de charger les factures Dolibarr');
         } finally {
@@ -43,7 +49,8 @@ export default function WalletInvoices({ clientId, onCountChange }) {
     const handleSync = async () => {
         setSyncing(true);
         try {
-            await dolibarrApi.sync();
+            // Sync uniquement pour les factures clients (pas fournisseurs)
+            if (!fetchFn) await dolibarrApi.sync();
             await fetchInvoices();
         } catch { }
         finally { setSyncing(false); }
@@ -54,25 +61,15 @@ export default function WalletInvoices({ clientId, onCountChange }) {
     const paginated = invoices.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
     return (
-        <Card sx={{
-            width: '100%',
-            minHeight: 'calc(100vh - 220px)',
-            display: 'flex',
-            flexDirection: 'column',
-        }}>
-            <CardContent sx={{
-                p: 3,
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                '&:last-child': { pb: 2 },
-            }}>
+        <Card sx={{ width: '100%', minHeight: 'calc(100vh - 220px)', display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 2 } }}>
+
                 {/* Header */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         <ReceiptLongIcon sx={{ color: '#FAC345' }} />
                         <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                            Factures Dolibarr
+                            {fetchFn ? 'Factures fournisseurs' : 'Factures Dolibarr'}
                         </Typography>
                         <Chip
                             label={`${invoices.length} facture${invoices.length > 1 ? 's' : ''}`}
@@ -88,7 +85,7 @@ export default function WalletInvoices({ clientId, onCountChange }) {
                         disabled={syncing}
                         sx={{ borderColor: '#FAC345', color: '#E0A820', '&:hover': { borderColor: '#E0A820', bgcolor: 'rgba(250,195,69,0.05)' } }}
                     >
-                        Synchroniser
+                        {syncing ? 'Chargement...' : 'Actualiser'}
                     </Button>
                 </Box>
 
@@ -100,7 +97,6 @@ export default function WalletInvoices({ clientId, onCountChange }) {
                     </Box>
                 ) : (
                     <>
-                        {/* Tableau hauteur fixe */}
                         <TableContainer sx={{ flex: 1 }}>
                             <Table size="small">
                                 <TableHead>
@@ -127,16 +123,21 @@ export default function WalletInvoices({ clientId, onCountChange }) {
                                     ) : (
                                         paginated.map((inv) => {
                                             const status = statusConfig[inv.status] || statusConfig.draft;
+                                            // Référence — ref_supplier pour fournisseurs, ref_client pour clients
+                                            const refLabel = inv.ref_supplier || inv.ref_client || inv.ref || '—';
                                             return (
                                                 <TableRow key={inv.id} hover>
                                                     <TableCell>
                                                         <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: 'monospace', fontSize: '0.8rem' }}>
                                                             {inv.ref}
                                                         </Typography>
+                                                        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.68rem' }}>
+                                                            {refLabel !== inv.ref ? refLabel : ''}
+                                                        </Typography>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
-                                                            {inv.lines?.[0]?.desc || inv.ref_client || '—'}
+                                                            {inv.lines?.[0]?.desc || inv.ref_client || inv.ref_supplier || '—'}
                                                         </Typography>
                                                     </TableCell>
                                                     <TableCell>
@@ -181,7 +182,6 @@ export default function WalletInvoices({ clientId, onCountChange }) {
                             </Table>
                         </TableContainer>
 
-                        {/* Pagination */}
                         <TablePagination
                             component="div"
                             count={invoices.length}

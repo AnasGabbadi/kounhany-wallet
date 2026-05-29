@@ -1,0 +1,235 @@
+const pool = require('../config/db');
+const blnkService = require('./blnk.service');
+const walletService = require('./wallet.service');
+const redis = require('../config/redis');
+
+const CACHE_TTL = 300;        // 5 minutes — wallet balances
+const CACHE_TTL_LIST = 60;    // 1 minute — liste prestataires
+
+const prestatairesService = {
+
+  // ─── FIND OR CREATE ───────────────────────────────────────────
+  async findOrCreate({ garage_uuid, name, email, phone }) {
+    const prestataireId = `prestataire_${garage_uuid}`;
+    const cacheKey = `presta:${garage_uuid}`;
+
+    // 1. Check cache Redis — évite un appel DB à chaque maintenance
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        console.log(`[Prestataire] Cache hit : ${name} (${prestataireId})`);
+        return { prestataire_id: prestataireId, created: false };
+      }
+    } catch (err) {
+      console.warn('[Prestataire] Redis get failed:', err.message);
+    }
+
+    // 2. Check DB
+    const existing = await pool.query(
+      'SELECT prestataire_id FROM prestataires WHERE prestataire_id = $1',
+      [prestataireId]
+    );
+
+    if (existing.rows.length > 0) {
+      // Mettre en cache pour les prochains appels
+      try {
+        await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ prestataire_id: prestataireId }));
+      } catch (err) {
+        console.warn('[Prestataire] Redis set failed:', err.message);
+      }
+      return { prestataire_id: prestataireId, created: false };
+    }
+
+    // 3. Créer wallets Blnk
+    const ledger = await blnkService.createLedger(prestataireId, name);
+    const [available, blocked, receivable] = await Promise.all([
+      blnkService.createBalance(ledger.ledger_id, 'MAD', 'available', prestataireId),
+      blnkService.createBalance(ledger.ledger_id, 'MAD', 'blocked', prestataireId),
+      blnkService.createBalance(ledger.ledger_id, 'MAD', 'receivable', prestataireId),
+    ]);
+
+    // 4. Insérer en DB
+    await pool.query(
+      `INSERT INTO prestataires (prestataire_id, garage_uuid, name, email, phone)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [prestataireId, garage_uuid, name, email || null, phone || null]
+    );
+
+    await pool.query(
+      `INSERT INTO prestataire_wallets
+       (prestataire_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [prestataireId, ledger.ledger_id, available.balance_id, blocked.balance_id, receivable.balance_id]
+    );
+
+    // 5. Mettre en cache
+    try {
+      await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ prestataire_id: prestataireId }));
+      // Invalider cache liste
+      await redis.del('presta:list');
+    } catch (err) {
+      console.warn('[Prestataire] Redis set failed:', err.message);
+    }
+
+    console.log(`[Prestataire] ✅ Wallet créé : ${name} (${prestataireId})`);
+    return { prestataire_id: prestataireId, created: true };
+  },
+
+  // ─── LIST ─────────────────────────────────────────────────────
+  async list() {
+    const cacheKey = 'presta:list';
+
+    // Check cache
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.warn('[Prestataire] Redis get failed:', err.message);
+    }
+
+    const result = await pool.query(
+      `SELECT p.*, pw.currency
+       FROM prestataires p
+       LEFT JOIN prestataire_wallets pw ON p.prestataire_id = pw.prestataire_id
+       ORDER BY p.name ASC`
+    );
+
+    // Mettre en cache
+    try {
+      await redis.setEx(cacheKey, CACHE_TTL_LIST, JSON.stringify(result.rows));
+    } catch (err) {
+      console.warn('[Prestataire] Redis set failed:', err.message);
+    }
+
+    return result.rows;
+  },
+
+  // ─── GET ONE ──────────────────────────────────────────────────
+  async getOne(prestataireId) {
+    const cacheKey = `presta:one:${prestataireId}`;
+
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.warn('[Prestataire] Redis get failed:', err.message);
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM prestataires WHERE prestataire_id = $1',
+      [prestataireId]
+    );
+
+    if (result.rows.length === 0) return null;
+
+    try {
+      await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify(result.rows[0]));
+    } catch (err) {
+      console.warn('[Prestataire] Redis set failed:', err.message);
+    }
+
+    return result.rows[0];
+  },
+
+  // ─── GET WALLET ───────────────────────────────────────────────
+  async getWallet(prestataireId) {
+    const walletResult = await pool.query(
+      'SELECT * FROM prestataire_wallets WHERE prestataire_id = $1',
+      [prestataireId]
+    );
+    if (walletResult.rows.length === 0) throw new Error('Wallet introuvable');
+
+    const wallet = walletResult.rows[0];
+
+    // Balances Blnk — cache 30s (données temps réel)
+    const cacheKey = `presta:balances:${prestataireId}`;
+    let accounts;
+
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        accounts = JSON.parse(cached);
+      }
+    } catch (err) {
+      console.warn('[Prestataire] Redis get failed:', err.message);
+    }
+
+    if (!accounts) {
+      const [available, blocked, receivable] = await Promise.all([
+        blnkService.getBalance(wallet.available_balance_id),
+        blnkService.getBalance(wallet.blocked_balance_id),
+        blnkService.getBalance(wallet.receivable_balance_id),
+      ]);
+
+      accounts = {
+        available: {
+          balance: available.balance / 10000,
+          credit_balance: available.credit_balance / 10000,
+          debit_balance: available.debit_balance / 10000,
+        },
+        blocked: {
+          balance: blocked.balance / 10000,
+          credit_balance: blocked.credit_balance / 10000,
+          debit_balance: blocked.debit_balance / 10000,
+        },
+        receivable: {
+          balance: receivable.balance / 10000,
+          credit_balance: receivable.credit_balance / 10000,
+          debit_balance: receivable.debit_balance / 10000,
+        },
+      };
+
+      try {
+        await redis.setEx(cacheKey, 30, JSON.stringify(accounts));
+      } catch (err) {
+        console.warn('[Prestataire] Redis set failed:', err.message);
+      }
+    }
+
+    return {
+      currency: wallet.currency,
+      created_at: wallet.created_at,
+      accounts,
+    };
+  },
+
+  // ─── GET ORDERS ───────────────────────────────────────────────
+  async getOrders(prestataireId) {
+    const result = await pool.query(
+      `SELECT * FROM prestataire_orders
+       WHERE prestataire_id = $1
+       ORDER BY created_at DESC`,
+      [prestataireId]
+    );
+    return result.rows;
+  },
+
+  // ─── PAY ──────────────────────────────────────────────────────
+  async pay(prestataireId, amount, reference, description) {
+    const result = await walletService.pay(prestataireId, amount, reference, description);
+
+    // Invalider cache balances après transaction
+    try {
+      await redis.del(`presta:balances:${prestataireId}`);
+    } catch (err) {
+      console.warn('[Prestataire] Redis del failed:', err.message);
+    }
+
+    return result;
+  },
+
+  // ─── INVALIDER CACHE (utile après actions wallet) ─────────────
+  async invalidateCache(prestataireId) {
+    try {
+      await Promise.all([
+        redis.del(`presta:balances:${prestataireId}`),
+        redis.del(`presta:one:${prestataireId}`),
+        redis.del('presta:list'),
+      ]);
+    } catch (err) {
+      console.warn('[Prestataire] Redis invalidate failed:', err.message);
+    }
+  },
+};
+
+module.exports = prestatairesService;

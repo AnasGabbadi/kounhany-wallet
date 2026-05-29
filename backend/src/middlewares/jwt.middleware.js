@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const jwksRsa = require('jwks-rsa');
 
+// Normaliser au boot — protège contre \r, espaces, BOM dans le .env
+const API_KEY = (process.env.API_KEY || '').trim();
+
 // Client JWKS — récupère les clés publiques depuis Authentik
 const jwksClient = jwksRsa({
   jwksUri: `${process.env.AUTHENTIK_URL}/application/o/${process.env.AUTHENTIK_APP_SLUG}/jwks/`,
@@ -23,17 +26,18 @@ const jwtMiddleware = (req, res, next) => {
   console.log('[JWT] Headers reçus:', JSON.stringify(req.headers['authorization']?.substring(0, 30)));
   console.log('[JWT] x-api-key:', req.headers['x-api-key']);
   // En mode test — garder API Key
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+
   if (process.env.NODE_ENV === 'test') {
-    const apiKey = req.headers['x-api-key'];
-    if (apiKey === process.env.API_KEY) return next();
+    if (apiKey === API_KEY) return next();
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   const auth = req.headers.authorization;
 
   // Support API Key legacy (pour les apps qui appellent directement)
-  if (req.headers['x-api-key']) {
-    if (req.headers['x-api-key'] === process.env.API_KEY) return next();
+  if (apiKey) {
+    if (apiKey === API_KEY) return next();
     return res.status(401).json({ success: false, message: 'Unauthorized — API key invalide' });
   }
 

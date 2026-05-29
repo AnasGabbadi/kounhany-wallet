@@ -46,4 +46,35 @@ router.post('/callback', async (req, res) => {
   }
 });
 
+router.post('/refresh', async (req, res, next) => {
+  try {
+    const { refresh_token } = req.body;
+    if (!refresh_token) return res.status(400).json({ error: 'refresh_token requis' });
+
+    const tokenUrl = `${process.env.AUTHENTIK_ISSUER}/application/o/token/`;
+
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token,
+      client_id: process.env.AUTHENTIK_CLIENT_ID,
+      client_secret: process.env.AUTHENTIK_CLIENT_SECRET,
+    });
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    if (!response.ok) {
+      return res.status(401).json({ error: 'Refresh échoué' });
+    }
+
+    const data = await response.json();
+    return res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
