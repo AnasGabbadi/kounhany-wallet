@@ -2,6 +2,7 @@
 import {
   AppBar, Toolbar, IconButton, Typography, Box, Avatar,
   Menu, MenuItem, Divider, Badge, Popover, Chip, Button,
+  Tooltip,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -11,10 +12,12 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import SyncIcon from '@mui/icons-material/Sync';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { authService } from '@/lib/auth';
 import { useAlerts } from '@/lib/alerts-context';
+import { dolibarrApi } from '@/lib/api';
 
 const NOTIF_LIMIT = 5;
 
@@ -46,6 +49,25 @@ export default function TopBar({ onMenuClick }) {
   const [userMenuAnchor, setUserMenuAnchor] = useState(null);
   const [notifAnchor, setNotifAnchor] = useState(null);
   const [notifTab, setNotifTab] = useState('all');
+
+  // ─── Sync Dolibarr ────────────────────────────────────────────
+  const [syncing, setSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncSuccess(false);
+    try {
+      await dolibarrApi.sync();
+      setSyncSuccess(true);
+      setTimeout(() => setSyncSuccess(false), 3000);
+    } catch (err) {
+      console.error('[Sync] Erreur:', err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+  // ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     setMounted(true);
@@ -86,6 +108,28 @@ export default function TopBar({ onMenuClick }) {
           {title}
         </Typography>
 
+        {/* ─── Bouton Sync Dolibarr — visible partout ─────────── */}
+        <Tooltip title="Synchroniser les paiements Dolibarr">
+          <IconButton
+            onClick={handleSync}
+            disabled={syncing}
+            sx={{
+              color: syncSuccess ? '#10B981' : syncing ? '#FAC345' : 'text.secondary',
+              transition: 'color 0.3s',
+              '&:hover': { bgcolor: 'rgba(250,195,69,0.08)' },
+            }}
+          >
+            <SyncIcon
+              sx={{
+                fontSize: 22,
+                animation: syncing ? 'spin 1s linear infinite' : 'none',
+                '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } },
+              }}
+            />
+          </IconButton>
+        </Tooltip>
+        {/* ──────────────────────────────────────────────────────── */}
+
         {/* Icône notifications */}
         <IconButton
           onClick={handleOpenNotif}
@@ -109,8 +153,7 @@ export default function TopBar({ onMenuClick }) {
           transformOrigin={{ vertical: 'top', horizontal: 'right' }}
           PaperProps={{
             sx: {
-              width: 360,
-              borderRadius: 2,
+              width: 360, borderRadius: 2,
               boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
               border: '1px solid rgba(0,0,0,0.08)',
               overflow: 'hidden',
@@ -132,7 +175,6 @@ export default function TopBar({ onMenuClick }) {
               )}
             </Box>
 
-            {/* Onglets — seulement Toutes et Financier */}
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               {[
                 { key: 'all', label: `Toutes (${safeAlerts.length})` },

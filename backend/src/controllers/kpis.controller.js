@@ -60,16 +60,26 @@ const kpisController = {
             const cached = await redis.get(cacheKey);
             if (cached) return res.json({ success: true, data: JSON.parse(cached) });
 
+            // ✅ UNION ALL — clients + prestataires
             const result = await pool.query(`
-      SELECT 
-        c.client_id,
-        cw.available_balance_id,
-        cw.blocked_balance_id,
-        cw.receivable_balance_id
-      FROM clients c
-      JOIN client_wallets cw ON c.client_id = cw.client_id
-      WHERE c.active = true
-    `);
+            SELECT 
+                c.client_id,
+                cw.available_balance_id,
+                cw.blocked_balance_id,
+                cw.receivable_balance_id
+            FROM clients c
+            JOIN client_wallets cw ON c.client_id = cw.client_id
+            WHERE c.active = true
+            UNION ALL
+            SELECT 
+                p.prestataire_id AS client_id,
+                pw.available_balance_id,
+                pw.blocked_balance_id,
+                pw.receivable_balance_id
+            FROM prestataires p
+            JOIN prestataire_wallets pw ON p.prestataire_id = pw.prestataire_id
+            WHERE p.active = true
+        `);
 
             const balances = await Promise.all(result.rows.map(async (row) => {
                 try {

@@ -13,6 +13,9 @@ import PersonIcon from '@mui/icons-material/Person';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
+import CoPresentIcon from '@mui/icons-material/CoPresent';
+import GarageIcon from '@mui/icons-material/Garage';
+import BuildIcon from '@mui/icons-material/Build';
 import { usePathname, useRouter } from 'next/navigation';
 import { authService } from '@/lib/auth';
 import { useEffect, useState } from 'react';
@@ -28,14 +31,22 @@ const MENU_ITEMS = [
       { label: 'Comptes particuliers', icon: <PersonIcon />, path: '/clients/b2c' },
     ],
   },
+  {
+    label: 'Prestataires', icon: <CoPresentIcon />, path: '/prestataires',
+    children: [
+      { label: 'Garages', icon: <GarageIcon />, path: '/prestataires/garages' },
+      { label: 'Pièces', icon: <BuildIcon />, path: '/prestataires/pieces' },
+    ],
+  },
   { label: 'Commandes', icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
   { label: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
 ];
 
 function MenuItem({ item, pathname, router }) {
   const hasChildren = !!item.children;
-  const isActive = pathname === item.path || 
-    (hasChildren && item.children.some(c => pathname === c.path));
+  const isActive = pathname === item.path ||
+    (hasChildren && item.children.some(c => pathname === c.path)) ||
+    (hasChildren && item.children.some(c => pathname.startsWith(c.path + '/')));
   const [open, setOpen] = useState(isActive);
 
   const active = pathname === item.path && !hasChildren;
@@ -90,7 +101,8 @@ function MenuItem({ item, pathname, router }) {
         <Collapse in={open} timeout="auto" unmountOnExit>
           <List disablePadding sx={{ pl: 2, mb: 0.5 }}>
             {item.children.map((child) => {
-              const childActive = pathname === child.path;
+              const childActive = pathname === child.path ||
+                pathname.startsWith(child.path + '/');
               return (
                 <ListItem key={child.path} disablePadding sx={{ mb: 0.5 }}>
                   <ListItemButton
@@ -204,7 +216,10 @@ export default function Sidebar({ open }) {
           bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2,
           border: '1px solid rgba(255,255,255,0.06)',
         }}>
-          <Avatar sx={{ width: 36, height: 36, bgcolor: '#FAC345', color: '#212529', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
+          <Avatar sx={{
+            width: 36, height: 36, bgcolor: '#FAC345',
+            color: '#212529', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0,
+          }}>
             {user?.name?.charAt(0).toUpperCase() || user?.preferred_username?.charAt(0).toUpperCase() || 'A'}
           </Avatar>
           <Box sx={{ minWidth: 0, flex: 1 }}>

@@ -18,6 +18,7 @@ const logistiqueBilling = require('./jobs/logistique.billing');
 const scoringRoutes = require('./routes/scoring.routes');
 const { metricsMiddleware, metricsEndpoint } = require('./metrics');
 const dolibarrSync = require('./services/dolibarr.sync');
+const prestatairesRoutes = require('./routes/prestataires.routes');
 
 const app = express();
 
@@ -79,6 +80,7 @@ app.use('/kpis', kpisRoutes);
 app.use('/dolibarr', dolibarrRoutes);
 app.use('/orders', ordersRoutes);
 app.use('/scoring', scoringRoutes);
+app.use('/prestataires', prestatairesRoutes);
 app.use(errorMiddleware);
 
 module.exports = app;

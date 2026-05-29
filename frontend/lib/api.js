@@ -19,12 +19,39 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
     const status = error.response?.status;
     const message = error.response?.data?.message || error.message;
+
     if ((status === 401 || status === 403) && typeof window !== 'undefined') {
+      const refreshToken = localStorage.getItem('kounhany_refresh_token');
+
+      if (refreshToken && !error.config._retry) {
+        error.config._retry = true;
+        try {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
+
+          if (res.ok) {
+            const { data } = await res.json();
+            localStorage.setItem('kounhany_access_token', data.access_token);
+            if (data.refresh_token) {
+              localStorage.setItem('kounhany_refresh_token', data.refresh_token);
+            }
+            // Retry la requête originale avec le nouveau token
+            error.config.headers.Authorization = `Bearer ${data.access_token}`;
+            return api(error.config);
+          }
+        } catch {}
+      }
+
+      // Refresh échoué ou pas de refresh_token → logout
       window.dispatchEvent(new CustomEvent('unauthorized', { detail: { status, message } }));
     }
+
     return Promise.reject(new Error(message));
   }
 );
@@ -65,6 +92,7 @@ export const dolibarrApi = {
   invoices: () => api.get('/dolibarr/invoices'),
   clientInvoices: (clientId) => api.get(`/dolibarr/invoices/${clientId}`),
   sync: () => api.post('/dolibarr/sync'),
+  supplierInvoices: (prestataireId) => api.get(`/dolibarr/supplier-invoices/${prestataireId}`),
 };
 
 export const ordersApi = {
@@ -74,6 +102,14 @@ export const ordersApi = {
   confirm: (id) => api.post(`/orders/${id}/confirm`),
   cancel: (id) => api.post(`/orders/${id}/cancel`),
   invoiceLogistique: () => api.post('/orders/logistique/invoice'),
+};
+
+export const prestatairesApi = {
+  list: () => api.get('/prestataires').then(r => Array.isArray(r) ? r : r.data || []),
+  getOne: (id) => api.get(`/prestataires/${id}`).then(r => r?.data || r),
+  getWallet: (id) => api.get(`/prestataires/${id}/wallet`).then(r => r?.data || r),
+  getOrders: (id) => api.get(`/prestataires/${id}/orders`).then(r => Array.isArray(r) ? r : r.data || []),
+  supplierInvoices: (prestataireId) => api.get(`/dolibarr/supplier-invoices/${prestataireId}`),
 };
 
 export default api;

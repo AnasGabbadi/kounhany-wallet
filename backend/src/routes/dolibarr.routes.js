@@ -78,4 +78,6 @@ router.get('/invoices/:clientId', dolibarrController.getClientInvoices);
 router.post('/sync', dolibarrController.forceSync);
 
 router.post('/webhook', dolibarrController.webhook);
+router.get('/supplier-invoices/:prestataireId', dolibarrController.getPrestaInvoices);
+
 module.exports = router;

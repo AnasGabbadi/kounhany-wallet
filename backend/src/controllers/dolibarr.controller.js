@@ -115,6 +115,17 @@ const dolibarrController = {
       next(err);
     }
   },
+
+  async getPrestaInvoices(req, res, next) {
+    try {
+      const { prestataireId } = req.params;
+      const invoices = await dolibarrService.getSupplierInvoicesByPrestataire(prestataireId);
+      res.json({
+        success: true,
+        data: { client_id: prestataireId, invoices, total: invoices.length },
+      });
+    } catch (err) { next(err); }
+  },
 };
 
 module.exports = dolibarrController;

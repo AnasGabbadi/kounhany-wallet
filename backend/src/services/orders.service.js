@@ -5,7 +5,7 @@ const blnkService = require('./blnk.service');
 class OrdersService {
 
   // ─── CRÉER UNE COMMANDE (Fleet / Logistique / B2C) ───────────────────────
-  
+
   async createOrder({ clientId, order_type, amount, description, reference, metadata = {}, created_by = null }) {
     // 1. Vérifier que le client existe
     const clientCheck = await db.query(
@@ -178,11 +178,7 @@ class OrdersService {
   }
 
   async confirmOrder(orderId) {
-    // Récupérer la commande
-    const order = await db.query(
-      'SELECT * FROM orders WHERE id = $1',
-      [orderId]
-    );
+    const order = await db.query('SELECT * FROM orders WHERE id = $1', [orderId]);
     if (order.rows.length === 0) {
       const err = new Error('Commande introuvable');
       err.status = 404;
@@ -190,14 +186,13 @@ class OrdersService {
     }
 
     const o = order.rows[0];
-
     if (o.status !== 'BLOCKED') {
       const err = new Error(`Impossible de confirmer — statut actuel: ${o.status}`);
       err.status = 422;
       throw err;
     }
 
-    // CONFIRM Blnk : Blocked → Receivable + facture Dolibarr
+    // CONFIRM Blnk : Blocked → Receivable + facture client Dolibarr
     const confirmRef = `CONFIRM-${o.reference}`;
     await walletService.confirm(
       o.client_id,
@@ -206,12 +201,158 @@ class OrdersService {
       o.description || `Confirmation commande ${o.reference}`
     );
 
+    // ✅ Lire prestataires depuis metadata
+    const metadata = o.metadata || {};
+    const dolibarrService = require('./dolibarr.service');
+
+    // Facture fournisseur garage
+    const garageUuid = metadata.wallet_garage_uuid;
+    const prestataireId = garageUuid ? `garage_${garageUuid}` : metadata.wallet_prestataire_id;
+    const garageAmount = parseFloat(metadata.wallet_garage_amount || 0);
+
+    if (prestataireId && garageAmount > 0) {
+      try {
+        let presta = await db.query(
+          'SELECT * FROM prestataires WHERE prestataire_id = $1', [prestataireId]
+        );
+
+        // Fallback 1 : chercher par kounhany_uuid dans clients (SCIM crée sous UUID Authentik)
+        if (presta.rows.length === 0 && garageUuid) {
+          const fallback = await db.query(
+            `SELECT p.* FROM prestataires p
+             JOIN clients c ON c.client_id = p.prestataire_id
+             WHERE c.kounhany_uuid = $1::uuid AND p.type = 'GARAGE'
+             LIMIT 1`,
+            [garageUuid]
+          );
+          if (fallback.rows.length > 0) {
+            presta = fallback;
+            console.log(`[Confirm] ℹ️ Garage trouvé via kounhany_uuid fallback — ${fallback.rows[0].prestataire_id}`);
+          }
+        }
+
+        // Fallback 2 : chercher par legacy_uuid (anciens UUIDs prestataire stockés par Fleet)
+        if (presta.rows.length === 0 && garageUuid) {
+          // Alias supplémentaires pour anciens UUIDs qui partagent le même prestataire actuel
+          const LEGACY_ALIASES = {
+            'ed05a1b6-e08f-48a1-bdc8-06cbae248f82': '0e5049a6-f6b1-418e-9fa0-8fe67453b7f7',
+          };
+          const resolvedLegacyUuid = LEGACY_ALIASES[garageUuid] || garageUuid;
+          const fallback2 = await db.query(
+            `SELECT * FROM prestataires WHERE legacy_uuid = $1::uuid AND type = 'GARAGE' LIMIT 1`,
+            [resolvedLegacyUuid]
+          );
+          if (fallback2.rows.length > 0) {
+            presta = fallback2;
+            console.log(`[Confirm] ℹ️ Garage trouvé via legacy_uuid — ${fallback2.rows[0].prestataire_id}`);
+          } else {
+            console.warn(`[Confirm] ⚠️ Garage introuvable — kounhany_uuid: ${garageUuid} — prestataireId: ${prestataireId}`);
+          }
+        }
+
+        if (presta.rows.length > 0) {
+          const resolvedPrestataireId = presta.rows[0].prestataire_id;
+          // 1. Créer facture Dolibarr d'abord
+          await dolibarrService.createSupplierInvoice({
+            prestataireId: resolvedPrestataireId,
+            prestataireName: presta.rows[0].name,
+            amount: garageAmount,
+            description: `Service garage — ${o.reference}`,
+            reference: `PRESTA-GARAGE-${o.reference.replace('FLEET-', '')}`,
+          });
+
+          // 2. Insérer order prestataire après
+          await db.query(
+            `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
+         VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
+         ON CONFLICT (reference) DO NOTHING`,
+            [
+              resolvedPrestataireId,
+              o.reference.replace('FLEET-', ''),
+              garageAmount,
+              `GARAGE-${o.reference.replace('FLEET-', '')}`,
+              `Service garage — ${o.reference}`,
+            ]
+          );
+          console.log(`[Confirm] ✅ Facture garage créée — ${presta.rows[0].name}`);
+        }
+      } catch (err) {
+        console.error('[Confirm] Erreur facture garage:', err.message);
+      }
+    }
+
+    // Facture fournisseur pièces
+    const providerUuid = metadata.wallet_provider_uuid;
+    const piecesPrestataireId = providerUuid ? `provider_${providerUuid}` : metadata.wallet_pieces_prestataire_id;
+    const piecesAmount = parseFloat(metadata.wallet_pieces_amount || 0);
+    
+    if (piecesPrestataireId && piecesAmount > 0) {
+      try {
+        let presta = await db.query(
+          'SELECT * FROM prestataires WHERE prestataire_id = $1', [piecesPrestataireId]
+        );
+
+        // Fallback 1 : chercher par kounhany_uuid dans clients
+        if (presta.rows.length === 0 && providerUuid) {
+          const fallback = await db.query(
+            `SELECT p.* FROM prestataires p
+             JOIN clients c ON c.client_id = p.prestataire_id
+             WHERE c.kounhany_uuid = $1::uuid AND p.type = 'PROVIDER'
+             LIMIT 1`,
+            [providerUuid]
+          );
+          if (fallback.rows.length > 0) {
+            presta = fallback;
+            console.log(`[Confirm] ℹ️ Provider trouvé via kounhany_uuid fallback — ${fallback.rows[0].prestataire_id}`);
+          }
+        }
+
+        // Fallback 2 : chercher par legacy_uuid (anciens UUIDs prestataire)
+        if (presta.rows.length === 0 && providerUuid) {
+          const fallback2 = await db.query(
+            `SELECT * FROM prestataires WHERE legacy_uuid = $1::uuid AND type = 'PROVIDER' LIMIT 1`,
+            [providerUuid]
+          );
+          if (fallback2.rows.length > 0) {
+            presta = fallback2;
+            console.log(`[Confirm] ℹ️ Provider trouvé via legacy_uuid — ${fallback2.rows[0].prestataire_id}`);
+          } else {
+            console.warn(`[Confirm] ⚠️ Provider introuvable — kounhany_uuid: ${providerUuid}`);
+          }
+        }
+
+        if (presta.rows.length > 0) {
+          const resolvedPrestataireId = presta.rows[0].prestataire_id;
+          await dolibarrService.createSupplierInvoice({
+            prestataireId: resolvedPrestataireId,
+            prestataireName: presta.rows[0].name,
+            amount: piecesAmount,
+            description: `Pièces — ${o.reference}`,
+            reference: `PRESTA-PIECES-${o.reference.replace('FLEET-', '')}`,
+          });
+          await db.query(
+            `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
+            VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
+            ON CONFLICT (reference) DO NOTHING`,
+            [
+              resolvedPrestataireId,
+              o.reference.replace('FLEET-', ''),
+              piecesAmount,
+              `PIECES-${o.reference.replace('FLEET-', '')}`,
+              `Pièces — ${o.reference}`,
+            ]
+          );
+          console.log(`[Confirm] ✅ Facture pièces créée — ${presta.rows[0].name}`);
+        }
+      } catch (err) {
+        console.error('[Confirm] Erreur facture pièces:', err.message);
+      }
+    }
+
     // Mettre à jour l'order
     const updated = await db.query(
-      `UPDATE orders 
-     SET status = 'CONFIRMED', confirmed_at = NOW(), updated_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
+      `UPDATE orders SET status = 'CONFIRMED', confirmed_at = NOW(), updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
       [orderId]
     );
 
