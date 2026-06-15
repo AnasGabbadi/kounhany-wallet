@@ -44,5 +44,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /var/www/html/wallet
+            git stash
             git pull origin main
-            docker-compose up --build -d
+            git stash pop
+            docker compose down
+            docker compose up --build -d
