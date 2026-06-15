@@ -41,7 +41,17 @@ const jwtMiddleware = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Unauthorized — API key invalide' });
   }
 
-  // Vérifier Bearer token
+  // Support API Key via Authorization: Bearer <key>
+  // Pour les apps (Fleet, Kounhany App) qui envoient Bearer au lieu de x-api-key
+  if (auth?.startsWith('Bearer ') && API_KEY) {
+    const bearerToken = auth.slice(7).trim();
+    if (bearerToken === API_KEY) {
+      req.auth = { type: 'api-key' };
+      return next();
+    }
+  }
+
+  // Vérifier Bearer token JWT
   if (!auth?.startsWith('Bearer ')) {
     return res.status(401).json({ success: false, message: 'Unauthorized — Token requis' });
   }
@@ -49,10 +59,16 @@ const jwtMiddleware = (req, res, next) => {
   const token = auth.split(' ')[1];
 
   // Vérifier le token JWT Authentik
+  // Accepte les deux issuers : Docker-interne (authentik-server) ET public (localhost)
+  const allowedIssuers = [
+    process.env.AUTHENTIK_ISSUER,
+    process.env.AUTHENTIK_ISSUER_PUBLIC,
+  ].filter(Boolean);
+
   jwt.verify(token, getSigningKey, {
     algorithms: ['RS256'],
     audience: process.env.AUTHENTIK_CLIENT_ID,
-    issuer: process.env.AUTHENTIK_ISSUER,
+    issuer: allowedIssuers,
   }, (err, decoded) => {
     if (err) {
       const parts = token.split('.');

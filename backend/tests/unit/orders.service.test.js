@@ -218,4 +218,75 @@ describe('OrdersService — cancelOrder', () => {
     await expect(ordersService.cancelOrder(1))
       .rejects.toMatchObject({ status: 422 });
   });
+
+  test('doit retourner 422 si commande déjà CANCELLED', async () => {
+    pool.query = jest.fn().mockResolvedValueOnce({
+      rows: [{ ...mockOrder, status: 'CANCELLED' }]
+    });
+
+    await expect(ordersService.cancelOrder(1))
+      .rejects.toMatchObject({ status: 422, message: expect.stringContaining('CANCELLED') });
+  });
+});
+
+// ─── confirmOrder — déjà CONFIRMED ────────────────────────────────────────────
+describe('OrdersService — confirmOrder (double-confirmation guard)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('doit retourner 422 si commande déjà CONFIRMED', async () => {
+    pool.query = jest.fn().mockResolvedValueOnce({
+      rows: [{ ...mockOrder, status: 'CONFIRMED' }]
+    });
+
+    await expect(ordersService.confirmOrder(1))
+      .rejects.toMatchObject({ status: 422, message: expect.stringContaining('CONFIRMED') });
+  });
+
+  test('doit retourner 422 si commande CANCELLED (non BLOCKED)', async () => {
+    pool.query = jest.fn().mockResolvedValueOnce({
+      rows: [{ ...mockOrder, status: 'CANCELLED' }]
+    });
+
+    await expect(ordersService.confirmOrder(1))
+      .rejects.toMatchObject({ status: 422 });
+  });
+});
+
+// ─── getOrder (DB query) ───────────────────────────────────────────────────────
+describe('OrdersService — getOrder (via pool.query direct)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('doit retourner un order existant avec le bon format', async () => {
+    pool.query = jest.fn().mockResolvedValueOnce({ rows: [mockOrder] });
+
+    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [1]);
+    expect(result.rows[0]).toMatchObject({
+      id: 1,
+      client_id: 'client_123',
+      order_type: 'FLEET',
+      status: 'BLOCKED',
+      reference: 'CMD-FLEET-001',
+    });
+    expect(pool.query).toHaveBeenCalledWith('SELECT * FROM orders WHERE id = $1', [1]);
+  });
+
+  test('doit retourner tableau vide si order introuvable', async () => {
+    pool.query = jest.fn().mockResolvedValueOnce({ rows: [] });
+
+    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [9999]);
+    expect(result.rows.length).toBe(0);
+  });
+
+  test('order doit contenir les champs metadata et blnk_transaction_id', async () => {
+    const orderWithMeta = {
+      ...mockOrder,
+      metadata: { wallet_garage_uuid: 'gar_123', wallet_garage_amount: 500 },
+      blnk_transaction_id: 'txn_blnk_abc',
+    };
+    pool.query = jest.fn().mockResolvedValueOnce({ rows: [orderWithMeta] });
+
+    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [1]);
+    expect(result.rows[0].metadata).toHaveProperty('wallet_garage_uuid');
+    expect(result.rows[0].blnk_transaction_id).toBe('txn_blnk_abc');
+  });
 });

@@ -122,7 +122,7 @@ exports.updateMetadata = async (req, res, next) => {
     const { id } = req.params;
     const { metadata } = req.body;
     const result = await pool.query(
-      `UPDATE orders 
+      `UPDATE orders
        SET metadata = metadata || $1::jsonb, updated_at = NOW()
        WHERE id = $2 RETURNING *`,
       [JSON.stringify(metadata), id]
@@ -131,4 +131,49 @@ exports.updateMetadata = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Order introuvable' });
     res.json({ success: true, data: result.rows[0] });
   } catch (err) { next(err); }
+};
+
+exports.getOne = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [id]);
+    if (!result.rows.length) return res.status(404).json({ success: false, message: 'Order not found' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /orders/:id/validate-invoices — appelé par Kounhany quand le garagiste soumet le certificat
+exports.validateInvoices = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [id]);
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, message: `Order ${id} introuvable` });
+    }
+
+    const order = result.rows[0];
+
+    if (!process.env.DOLIBARR_URL || !process.env.DOLIBARR_API_KEY) {
+      return res.status(503).json({ success: false, message: 'Dolibarr non configuré' });
+    }
+
+    const dolibarrService = require('../services/dolibarr.service');
+    const invoiceResults = await dolibarrService.validateOrderInvoices(order.reference);
+
+    console.log(`[ValidateInvoices] Order ${id} (${order.reference}) — résultats:`, JSON.stringify(invoiceResults));
+
+    const hasErrors = invoiceResults.errors.length > 0;
+    return res.status(hasErrors ? 207 : 200).json({
+      success: true,
+      order_id: id,
+      reference: order.reference,
+      invoices: invoiceResults,
+      warnings: hasErrors ? invoiceResults.errors : undefined,
+    });
+  } catch (err) {
+    next(err);
+  }
 };

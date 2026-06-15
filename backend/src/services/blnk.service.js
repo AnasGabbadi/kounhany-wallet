@@ -35,7 +35,7 @@ const blnkService = {
   // Créer une transaction dans Blnk
   async createTransaction(data) {
     const response = await blnkClient.post('/transactions', {
-      amount: data.amount,
+      amount: Math.round(data.amount), // évite floating point (ex: 2574.74*100 = 257473.999...)
       currency: data.currency || 'MAD',
       precision: 100,
       reference: data.reference,

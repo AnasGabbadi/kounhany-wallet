@@ -261,6 +261,8 @@ router.post('/logistique/invoice', async (req, res, next) => {
  *       422:
  *         description: Commande non BLOCKED
  */
+router.get('/:id', ordersController.getOne);
+
 router.post('/:id/confirm', ordersController.confirmOrder);
 
 /**
@@ -293,5 +295,7 @@ router.post('/:id/confirm', ordersController.confirmOrder);
 router.post('/:id/cancel', ordersController.cancelOrder);
 
 router.patch('/:id/metadata', ordersController.updateMetadata);
+
+router.post('/:id/validate-invoices', ordersController.validateInvoices);
 
 module.exports = router;

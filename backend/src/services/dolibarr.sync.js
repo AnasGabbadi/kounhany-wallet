@@ -134,45 +134,85 @@ const dolibarrSync = {
 
       // ─── Factures fournisseurs (Prestataires) ─────────────────────
       const supplierInvoices = await dolibarrService.getPaidSupplierInvoices();
+      console.log(`[Dolibarr Sync] ${supplierInvoices.length} facture(s) fournisseur payée(s)`);
+
       if (supplierInvoices.length > 0) {
-        console.log(`[Dolibarr Sync] ${supplierInvoices.length} facture(s) fournisseur payée(s)`);
+        // Log toutes les ref_supplier pour debug
+        const refsList = supplierInvoices.map(i => i.ref_supplier || '(vide)').join(', ');
+        console.log(`[Dolibarr Sync] ref_supplier trouvées: ${refsList}`);
+
+        let skippedIdempotency = 0;
+        let skippedNoPrefix = 0;
+        let skippedNotFound = 0;
+        let paid = 0;
 
         for (const invoice of supplierInvoices) {
-          const ref = `SYNC-PRESTA-${invoice.id}`;
+          try {
+            const ref = `SYNC-PRESTA-${invoice.id}`;
 
-          const existing = await pool.query(
-            'SELECT id FROM transaction_logs WHERE reference = $1', [ref]
-          );
-          if (existing.rows.length > 0) continue;
-          if (!invoice.ref_supplier?.startsWith('PRESTA-')) continue;
+            // Idempotency — déjà traité ?
+            const existing = await pool.query(
+              'SELECT id FROM transaction_logs WHERE reference = $1', [ref]
+            );
+            if (existing.rows.length > 0) {
+              skippedIdempotency++;
+              continue;
+            }
 
-          // Chercher dans prestataire_orders
-          const orderRef = invoice.ref_supplier.replace(/^PRESTA-/, '');
-          const order = await pool.query(
-            `SELECT * FROM prestataire_orders WHERE reference = $1 AND status = 'CONFIRMED'`,
-            [orderRef]
-          );
+            // Filtre sur le préfixe PRESTA-
+            if (!invoice.ref_supplier?.startsWith('PRESTA-')) {
+              console.log(`[Dolibarr Sync] Skip (pas de préfixe PRESTA-): ref_supplier="${invoice.ref_supplier}" id=${invoice.id}`);
+              skippedNoPrefix++;
+              continue;
+            }
 
-          if (order.rows.length === 0) {
-            console.log(`[Dolibarr Sync] Order prestataire introuvable: ${invoice.ref_supplier}`);
-            continue;
+            // Mapping : "PRESTA-PIECES-mnt_xxx" → "PIECES-mnt_xxx"
+            //           "PRESTA-GARAGE-mnt_xxx" → "GARAGE-mnt_xxx"
+            const orderRef = invoice.ref_supplier.replace(/^PRESTA-/, '');
+            console.log(`[Dolibarr Sync] Traitement: ref_supplier="${invoice.ref_supplier}" → orderRef="${orderRef}" blnkRef="${ref}"`);
+
+            const order = await pool.query(
+              `SELECT * FROM prestataire_orders WHERE reference = $1 AND status = 'CONFIRMED'`,
+              [orderRef]
+            );
+
+            if (order.rows.length === 0) {
+              const anyOrder = await pool.query(
+                `SELECT reference, status FROM prestataire_orders WHERE reference = $1`,
+                [orderRef]
+              );
+              if (anyOrder.rows.length > 0) {
+                console.log(`[Dolibarr Sync] Order trouvé mais statut=${anyOrder.rows[0].status} (skip): ${orderRef}`);
+              } else {
+                console.log(`[Dolibarr Sync] Order prestataire introuvable en DB: "${orderRef}"`);
+              }
+              skippedNotFound++;
+              continue;
+            }
+
+            const o = order.rows[0];
+            console.log(`[Dolibarr Sync] Paiement: ${o.prestataire_id} — ${invoice.total_ttc} MAD — blnkRef="${ref}"`);
+
+            await prestatairesService.pay(
+              o.prestataire_id,
+              parseFloat(invoice.total_ttc),
+              ref,
+              `Paiement prestataire — ${invoice.ref}`
+            );
+
+            await pool.query(
+              `UPDATE prestataire_orders SET status = 'PAID', updated_at = NOW() WHERE id = $1`,
+              [o.id]
+            );
+
+            console.log(`[Dolibarr Sync] ✅ Prestataire payé : ${invoice.ref} — ${invoice.total_ttc} MAD`);
+            paid++;
+          } catch (invoiceErr) {
+            console.error(`[Dolibarr Sync] ❌ Erreur facture id=${invoice.id} ref_supplier="${invoice.ref_supplier}": ${invoiceErr.message}`);
           }
-
-          const o = order.rows[0];
-          await prestatairesService.pay(
-            o.prestataire_id,
-            parseFloat(invoice.total_ttc),
-            ref,
-            `Paiement prestataire — ${invoice.ref}`
-          );
-
-          await pool.query(
-            `UPDATE prestataire_orders SET status = 'PAID', updated_at = NOW() WHERE id = $1`,
-            [o.id]
-          );
-
-          console.log(`[Dolibarr Sync] ✅ Prestataire payé : ${invoice.ref} — ${invoice.total_ttc} MAD`);
         }
+
+        console.log(`[Dolibarr Sync] Résumé fournisseurs — payés: ${paid}, skip idempotency: ${skippedIdempotency}, skip no-prefix: ${skippedNoPrefix}, introuvable: ${skippedNotFound}`);
       }
     } catch (err) {
       console.error('[Dolibarr Sync] Erreur sync:', err.message);

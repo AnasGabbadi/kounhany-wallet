@@ -205,18 +205,28 @@ class OrdersService {
     const metadata = o.metadata || {};
     const dolibarrService = require('./dolibarr.service');
 
-    // Facture fournisseur garage
-    const garageUuid = metadata.wallet_garage_uuid;
-    const prestataireId = garageUuid ? `garage_${garageUuid}` : metadata.wallet_prestataire_id;
+    // Facture fournisseur garage — nouveau format prioritaire, ancien en fallback
+    const prestataireId = metadata.wallet_prestataire_id
+      || (metadata.wallet_garage_uuid ? `garage_${metadata.wallet_garage_uuid}` : null);
     const garageAmount = parseFloat(metadata.wallet_garage_amount || 0);
 
     if (prestataireId && garageAmount > 0) {
       try {
-        let presta = await db.query(
-          'SELECT * FROM prestataires WHERE prestataire_id = $1', [prestataireId]
-        );
+        const garageUuid = metadata.wallet_garage_uuid || null;
 
-        // Fallback 1 : chercher par kounhany_uuid dans clients (SCIM crée sous UUID Authentik)
+        // Recherche directe : prestataire_id (nouveau format) OU legacy_uuid (UUID brut Fleet)
+        let presta = await db.query(
+          `SELECT * FROM prestataires
+           WHERE prestataire_id = $1
+              OR (legacy_uuid = $2::uuid AND type = 'GARAGE')
+           LIMIT 1`,
+          [prestataireId, garageUuid]
+        );
+        if (presta.rows.length > 0) {
+          console.log(`[Confirm] ℹ️ Garage trouvé — ${presta.rows[0].prestataire_id}`);
+        }
+
+        // Fallback : chercher par kounhany_uuid dans clients (SCIM — UUID Authentik)
         if (presta.rows.length === 0 && garageUuid) {
           const fallback = await db.query(
             `SELECT p.* FROM prestataires p
@@ -227,72 +237,71 @@ class OrdersService {
           );
           if (fallback.rows.length > 0) {
             presta = fallback;
-            console.log(`[Confirm] ℹ️ Garage trouvé via kounhany_uuid fallback — ${fallback.rows[0].prestataire_id}`);
-          }
-        }
-
-        // Fallback 2 : chercher par legacy_uuid (anciens UUIDs prestataire stockés par Fleet)
-        if (presta.rows.length === 0 && garageUuid) {
-          // Alias supplémentaires pour anciens UUIDs qui partagent le même prestataire actuel
-          const LEGACY_ALIASES = {
-            'ed05a1b6-e08f-48a1-bdc8-06cbae248f82': '0e5049a6-f6b1-418e-9fa0-8fe67453b7f7',
-          };
-          const resolvedLegacyUuid = LEGACY_ALIASES[garageUuid] || garageUuid;
-          const fallback2 = await db.query(
-            `SELECT * FROM prestataires WHERE legacy_uuid = $1::uuid AND type = 'GARAGE' LIMIT 1`,
-            [resolvedLegacyUuid]
-          );
-          if (fallback2.rows.length > 0) {
-            presta = fallback2;
-            console.log(`[Confirm] ℹ️ Garage trouvé via legacy_uuid — ${fallback2.rows[0].prestataire_id}`);
+            console.log(`[Confirm] ℹ️ Garage trouvé via kounhany_uuid — ${fallback.rows[0].prestataire_id}`);
           } else {
-            console.warn(`[Confirm] ⚠️ Garage introuvable — kounhany_uuid: ${garageUuid} — prestataireId: ${prestataireId}`);
+            console.warn(`[Confirm] ⚠️ Garage introuvable — uuid: ${garageUuid} — prestataireId: ${prestataireId}`);
           }
         }
 
         if (presta.rows.length > 0) {
-          const resolvedPrestataireId = presta.rows[0].prestataire_id;
-          // 1. Créer facture Dolibarr d'abord
-          await dolibarrService.createSupplierInvoice({
-            prestataireId: resolvedPrestataireId,
-            prestataireName: presta.rows[0].name,
-            amount: garageAmount,
-            description: `Service garage — ${o.reference}`,
-            reference: `PRESTA-GARAGE-${o.reference.replace('FLEET-', '')}`,
-          });
+          const resolvedPrestataireId = presta.rows[0]?.prestataire_id;
+          const resolvedPrestataireName = presta.rows[0]?.name || `Garage-${garageUuid || prestataireId}`;
 
-          // 2. Insérer order prestataire après
-          await db.query(
-            `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
-         VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
-         ON CONFLICT (reference) DO NOTHING`,
-            [
-              resolvedPrestataireId,
-              o.reference.replace('FLEET-', ''),
-              garageAmount,
-              `GARAGE-${o.reference.replace('FLEET-', '')}`,
-              `Service garage — ${o.reference}`,
-            ]
-          );
-          console.log(`[Confirm] ✅ Facture garage créée — ${presta.rows[0].name}`);
+          if (!resolvedPrestataireId || typeof resolvedPrestataireId !== 'string') {
+            console.warn(`[Confirm] ⚠️ Garage prestataire_id invalide (${resolvedPrestataireId}) — skip Dolibarr`);
+          } else {
+            // 1. Créer facture Dolibarr d'abord
+            await dolibarrService.createSupplierInvoice({
+              prestataireId: resolvedPrestataireId,
+              prestataireName: resolvedPrestataireName,
+              amount: garageAmount,
+              description: `Service garage — ${o.reference}`,
+              reference: `PRESTA-GARAGE-${o.reference.replace('FLEET-', '')}`,
+            });
+
+            // 2. Insérer order prestataire après
+            await db.query(
+              `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
+           VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
+           ON CONFLICT (reference) DO NOTHING`,
+              [
+                resolvedPrestataireId,
+                o.reference.replace('FLEET-', ''),
+                garageAmount,
+                `GARAGE-${o.reference.replace('FLEET-', '')}`,
+                `Service garage — ${o.reference}`,
+              ]
+            );
+            console.log(`[Confirm] ✅ Facture garage créée — ${resolvedPrestataireName}`);
+          }
         }
       } catch (err) {
         console.error('[Confirm] Erreur facture garage:', err.message);
       }
     }
 
-    // Facture fournisseur pièces
-    const providerUuid = metadata.wallet_provider_uuid;
-    const piecesPrestataireId = providerUuid ? `provider_${providerUuid}` : metadata.wallet_pieces_prestataire_id;
+    // Facture fournisseur pièces — nouveau format prioritaire, ancien en fallback
+    const piecesId = metadata.wallet_pieces_prestataire_id
+      || (metadata.wallet_provider_uuid ? `provider_${metadata.wallet_provider_uuid}` : null);
     const piecesAmount = parseFloat(metadata.wallet_pieces_amount || 0);
-    
-    if (piecesPrestataireId && piecesAmount > 0) {
-      try {
-        let presta = await db.query(
-          'SELECT * FROM prestataires WHERE prestataire_id = $1', [piecesPrestataireId]
-        );
 
-        // Fallback 1 : chercher par kounhany_uuid dans clients
+    if (piecesId && piecesAmount > 0) {
+      try {
+        const providerUuid = metadata.wallet_provider_uuid || null;
+
+        // Recherche directe : prestataire_id (nouveau format) OU legacy_uuid (UUID brut Fleet)
+        let presta = await db.query(
+          `SELECT * FROM prestataires
+           WHERE prestataire_id = $1
+              OR (legacy_uuid = $2::uuid AND type = 'PROVIDER')
+           LIMIT 1`,
+          [piecesId, providerUuid]
+        );
+        if (presta.rows.length > 0) {
+          console.log(`[Confirm] ℹ️ Provider trouvé — ${presta.rows[0].prestataire_id}`);
+        }
+
+        // Fallback : chercher par kounhany_uuid dans clients (SCIM — UUID Authentik)
         if (presta.rows.length === 0 && providerUuid) {
           const fallback = await db.query(
             `SELECT p.* FROM prestataires p
@@ -303,46 +312,40 @@ class OrdersService {
           );
           if (fallback.rows.length > 0) {
             presta = fallback;
-            console.log(`[Confirm] ℹ️ Provider trouvé via kounhany_uuid fallback — ${fallback.rows[0].prestataire_id}`);
-          }
-        }
-
-        // Fallback 2 : chercher par legacy_uuid (anciens UUIDs prestataire)
-        if (presta.rows.length === 0 && providerUuid) {
-          const fallback2 = await db.query(
-            `SELECT * FROM prestataires WHERE legacy_uuid = $1::uuid AND type = 'PROVIDER' LIMIT 1`,
-            [providerUuid]
-          );
-          if (fallback2.rows.length > 0) {
-            presta = fallback2;
-            console.log(`[Confirm] ℹ️ Provider trouvé via legacy_uuid — ${fallback2.rows[0].prestataire_id}`);
+            console.log(`[Confirm] ℹ️ Provider trouvé via kounhany_uuid — ${fallback.rows[0].prestataire_id}`);
           } else {
-            console.warn(`[Confirm] ⚠️ Provider introuvable — kounhany_uuid: ${providerUuid}`);
+            console.warn(`[Confirm] ⚠️ Provider introuvable — uuid: ${providerUuid} — piecesId: ${piecesId}`);
           }
         }
 
         if (presta.rows.length > 0) {
-          const resolvedPrestataireId = presta.rows[0].prestataire_id;
-          await dolibarrService.createSupplierInvoice({
-            prestataireId: resolvedPrestataireId,
-            prestataireName: presta.rows[0].name,
-            amount: piecesAmount,
-            description: `Pièces — ${o.reference}`,
-            reference: `PRESTA-PIECES-${o.reference.replace('FLEET-', '')}`,
-          });
-          await db.query(
-            `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
-            VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
-            ON CONFLICT (reference) DO NOTHING`,
-            [
-              resolvedPrestataireId,
-              o.reference.replace('FLEET-', ''),
-              piecesAmount,
-              `PIECES-${o.reference.replace('FLEET-', '')}`,
-              `Pièces — ${o.reference}`,
-            ]
-          );
-          console.log(`[Confirm] ✅ Facture pièces créée — ${presta.rows[0].name}`);
+          const resolvedPrestataireId = presta.rows[0]?.prestataire_id;
+          const resolvedPrestataireName = presta.rows[0]?.name || `Provider-${providerUuid || piecesId}`;
+
+          if (!resolvedPrestataireId || typeof resolvedPrestataireId !== 'string') {
+            console.warn(`[Confirm] ⚠️ Pièces prestataire_id invalide (${resolvedPrestataireId}) — skip Dolibarr`);
+          } else {
+            await dolibarrService.createSupplierInvoice({
+              prestataireId: resolvedPrestataireId,
+              prestataireName: resolvedPrestataireName,
+              amount: piecesAmount,
+              description: `Pièces — ${o.reference}`,
+              reference: `PRESTA-PIECES-${o.reference.replace('FLEET-', '')}`,
+            });
+            await db.query(
+              `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
+              VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
+              ON CONFLICT (reference) DO NOTHING`,
+              [
+                resolvedPrestataireId,
+                o.reference.replace('FLEET-', ''),
+                piecesAmount,
+                `PIECES-${o.reference.replace('FLEET-', '')}`,
+                `Pièces — ${o.reference}`,
+              ]
+            );
+            console.log(`[Confirm] ✅ Facture pièces créée — ${resolvedPrestataireName}`);
+          }
         }
       } catch (err) {
         console.error('[Confirm] Erreur facture pièces:', err.message);

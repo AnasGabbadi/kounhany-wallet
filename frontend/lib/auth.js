@@ -36,16 +36,12 @@ export const authService = {
   },
 
   logout() {
-    const idToken = localStorage.getItem('kounhany_id_token');
     localStorage.removeItem('kounhany_access_token');
     localStorage.removeItem('kounhany_id_token');
     localStorage.removeItem('kounhany_refresh_token');
     localStorage.removeItem('kounhany_user');
-    const params = new URLSearchParams({
-      id_token_hint: idToken || '',
-      post_logout_redirect_uri: `${process.env.NEXT_PUBLIC_API_URL_FRONTEND}/login`,
-    });
-    window.location.href = `${AUTHENTIK_URL}/application/o/${APP_SLUG}/end-session/?${params.toString()}`;
+    // Redirect direct — Authentik end-session crashe (JSON.parse bug sur sa page flow)
+    window.location.href = '/login';
   },
 
   isAuthenticated() {

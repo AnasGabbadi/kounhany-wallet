@@ -139,9 +139,14 @@ const scimController = {
                 clientId = usernameBase;
             } else if (usernameBase.startsWith('provider_')) {
                 clientId = usernameBase;
+            } else if (usernameBase.startsWith('b2c_')) {
+                clientId = usernameBase;
             } else {
                 clientId = `client_${Date.now()}`;
             }
+
+            // Détecter B2C depuis le groupe ou le préfixe userName
+            const isB2C = groupNames.includes('B2C') || usernameBase.startsWith('b2c_');
 
             // Vérifier doublon par clientId OU email
             const existing = await pool.query(
@@ -151,26 +156,55 @@ const scimController = {
 
             if (existing.rows.length > 0) {
                 console.log(`[SCIM] User déjà existant : ${email} (${clientId})`);
-                if (existing.rows[0].client_id !== clientId) {
+                // Corriger client_type si B2C mais type manquant
+                if (isB2C && existing.rows[0].client_type !== 'B2C') {
                     await pool.query(
-                        'UPDATE clients SET client_id = $1, scim_id = $2, updated_at = NOW() WHERE client_id = $3',
-                        [clientId, scimId, existing.rows[0].client_id]
+                        'UPDATE clients SET client_type = $1, scim_id = $2, updated_at = NOW() WHERE client_id = $3',
+                        ['B2C', scimId, existing.rows[0].client_id]
                     );
-                    console.log(`[SCIM] Client_id corrigé : ${existing.rows[0].client_id} → ${clientId}`);
+                    console.log(`[SCIM] Client_type corrigé → B2C : ${existing.rows[0].client_id}`);
                 }
             } else {
-                // Extraire le kounhany_uuid depuis le userName (format: garage_UUID ou provider_UUID)
-            const kounhanyUuid = (() => {
-                const match = (userName || '').match(/^(?:garage|provider)_([0-9a-f-]{36})$/i);
-                return match ? match[1] : null;
-            })();
+                // Extraire le kounhany_uuid depuis le userName (garage_, provider_ ou b2c_)
+                const kounhanyUuid = (() => {
+                    const match = (userName || '').match(/^(?:garage|provider|b2c)_([0-9a-f-]{36})$/i);
+                    return match ? match[1] : null;
+                })();
 
-            await pool.query(
+                const clientType = isPrestataire ? 'PRESTATAIRE' : (isB2C ? 'B2C' : null);
+                await pool.query(
                     `INSERT INTO clients (client_id, name, email, scim_id, client_type, kounhany_uuid)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [clientId, displayName, email, scimId, isPrestataire ? 'PRESTATAIRE' : null, kounhanyUuid]
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [clientId, displayName, email, scimId, clientType, kounhanyUuid]
                 );
-                console.log(`[SCIM] ✅ Client créé : ${displayName} (${clientId}) kounhany_uuid: ${kounhanyUuid}`);
+                console.log(`[SCIM] ✅ Client créé : ${displayName} (${clientId}) type: ${clientType}`);
+            }
+
+            // Créer wallet B2C si b2c user
+            if (isB2C && !isPrestataire) {
+                const walletCheck = await pool.query(
+                    'SELECT * FROM client_wallets WHERE client_id = $1',
+                    [existing.rows.length > 0 ? existing.rows[0].client_id : clientId]
+                );
+                const walletClientId = existing.rows.length > 0 ? existing.rows[0].client_id : clientId;
+                if (walletCheck.rows.length === 0) {
+                    const ledger = await blnkService.createLedger(walletClientId, displayName);
+                    const ledgerId = ledger.ledger_id;
+                    const [available, blocked, receivable] = await Promise.all([
+                        blnkService.createBalance(ledgerId, 'MAD', 'available', walletClientId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'blocked',   walletClientId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'receivable', walletClientId),
+                    ]);
+                    await pool.query(
+                        `INSERT INTO client_wallets
+                         (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+                         VALUES ($1, $2, $3, $4, $5)`,
+                        [walletClientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                    );
+                    console.log(`[SCIM] ✅ Wallet B2C créé : ${displayName} (${walletClientId})`);
+                }
+                const client = await pool.query('SELECT * FROM clients WHERE client_id = $1', [walletClientId]);
+                return res.status(201).json(formatUser(client.rows[0]));
             }
 
             // Créer wallet prestataire si garage ou provider
@@ -451,11 +485,20 @@ const scimController = {
 
                 // ── Lier tous les members au wallet company ──
                 for (const member of members) {
-                    await pool.query(
-                        'UPDATE clients SET company_client_id = $1 WHERE scim_id = $2',
-                        [companyClientId, member.value]
+                    // Chercher par scim_id (UUID Authentik) OU par email (member.display = username SCIM)
+                    const memberEmail = (member.display || '').includes('@') ? member.display : null;
+                    const upd = await pool.query(
+                        `UPDATE clients
+                         SET company_client_id = $1, client_type = 'FLEET', updated_at = NOW()
+                         WHERE (scim_id = $2 OR ($3::text IS NOT NULL AND email = $3))
+                           AND company_client_id IS DISTINCT FROM $1`,
+                        [companyClientId, member.value, memberEmail]
                     );
-                    console.log(`[SCIM] User lié : ${member.display || member.value} → ${companyClientId}`);
+                    if (upd.rowCount > 0) {
+                        console.log(`[SCIM] ✅ User lié : ${member.display || member.value} → ${companyClientId}`);
+                    } else {
+                        console.warn(`[SCIM] ⚠️ User non trouvé pour liaison company : scim_id=${member.value} display=${member.display}`);
+                    }
                 }
             }
 

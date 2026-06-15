@@ -79,5 +79,6 @@ router.post('/sync', dolibarrController.forceSync);
 
 router.post('/webhook', dolibarrController.webhook);
 router.get('/supplier-invoices/:prestataireId', dolibarrController.getPrestaInvoices);
+router.post('/invoice-b2c', dolibarrController.createB2CInvoice);
 
 module.exports = router;

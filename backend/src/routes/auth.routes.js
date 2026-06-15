@@ -51,7 +51,7 @@ router.post('/refresh', async (req, res, next) => {
     const { refresh_token } = req.body;
     if (!refresh_token) return res.status(400).json({ error: 'refresh_token requis' });
 
-    const tokenUrl = `${process.env.AUTHENTIK_ISSUER}/application/o/token/`;
+    const tokenUrl = `${process.env.AUTHENTIK_URL}/application/o/token/`;
 
     const params = new URLSearchParams({
       grant_type: 'refresh_token',

@@ -285,6 +285,110 @@ const dolibarrService = {
     }
   },
 
+  // ── Recherche facture client par ref_client ────────────────────────────────
+  async findInvoiceByClientRef(refClient) {
+    try {
+      const res = await dolibarrApi.get('/invoices', {
+        params: { sqlfilters: `(t.ref_client:=:'${refClient}')`, limit: 1 },
+      });
+      const list = Array.isArray(res.data) ? res.data : Object.values(res.data || {});
+      return list.length > 0 ? list[0] : null;
+    } catch (err) {
+      if (err.response?.status === 404) return null;
+      throw err;
+    }
+  },
+
+  // ── Recherche facture fournisseur par ref_supplier ────────────────────────
+  async findSupplierInvoiceByRef(refSupplier) {
+    try {
+      const res = await dolibarrApi.get('/supplierinvoices', {
+        params: { sqlfilters: `(t.ref_supplier:=:'${refSupplier}')`, limit: 1 },
+      });
+      const list = Array.isArray(res.data) ? res.data : Object.values(res.data || {});
+      return list.length > 0 ? list[0] : null;
+    } catch (err) {
+      if (err.response?.status === 404) return null;
+      throw err;
+    }
+  },
+
+  // ── Valider une facture client (BROUILLON → VALIDÉE) ─────────────────────
+  async validateClientInvoice(invoiceId) {
+    const res = await dolibarrApi.post(`/invoices/${invoiceId}/validate`, { idwarehouse: 0 });
+    return res.data;
+  },
+
+  // ── Valider une facture fournisseur (BROUILLON → VALIDÉE) ─────────────────
+  async validateSupplierInvoice(invoiceId) {
+    const res = await dolibarrApi.post(`/supplierinvoices/${invoiceId}/validate`, { idwarehouse: 0 });
+    return res.data;
+  },
+
+  // ── Valider les 3 factures d'un order Fleet ───────────────────────────────
+  // orderRef = "FLEET-mnt_xxx" — la référence de l'order wallet
+  async validateOrderInvoices(orderRef) {
+    const mntRef = orderRef.replace(/^FLEET-/, '');
+    const confirmRef = `CONFIRM-${orderRef}`;
+    const garageRef = `PRESTA-GARAGE-${mntRef}`;
+    const piecesRef = `PRESTA-PIECES-${mntRef}`;
+
+    const results = { client: null, garage: null, pieces: null, errors: [] };
+
+    // 1. Facture client
+    try {
+      const inv = await this.findInvoiceByClientRef(confirmRef);
+      if (inv) {
+        if (inv.statut === '0') { // brouillon
+          await this.validateClientInvoice(inv.id);
+          results.client = { id: inv.id, ref: inv.ref, validated: true };
+        } else {
+          results.client = { id: inv.id, ref: inv.ref, validated: false, reason: `statut=${inv.statut}` };
+        }
+      } else {
+        results.errors.push(`Facture client introuvable (ref_client=${confirmRef})`);
+      }
+    } catch (err) {
+      results.errors.push(`Erreur facture client: ${err.message}`);
+    }
+
+    // 2. Facture fournisseur garage
+    try {
+      const inv = await this.findSupplierInvoiceByRef(garageRef);
+      if (inv) {
+        if (inv.statut === '0') {
+          await this.validateSupplierInvoice(inv.id);
+          results.garage = { id: inv.id, ref: inv.ref, validated: true };
+        } else {
+          results.garage = { id: inv.id, ref: inv.ref, validated: false, reason: `statut=${inv.statut}` };
+        }
+      } else {
+        results.errors.push(`Facture garage introuvable (ref_supplier=${garageRef})`);
+      }
+    } catch (err) {
+      results.errors.push(`Erreur facture garage: ${err.message}`);
+    }
+
+    // 3. Facture fournisseur pièces
+    try {
+      const inv = await this.findSupplierInvoiceByRef(piecesRef);
+      if (inv) {
+        if (inv.statut === '0') {
+          await this.validateSupplierInvoice(inv.id);
+          results.pieces = { id: inv.id, ref: inv.ref, validated: true };
+        } else {
+          results.pieces = { id: inv.id, ref: inv.ref, validated: false, reason: `statut=${inv.statut}` };
+        }
+      } else {
+        results.errors.push(`Facture pièces introuvable (ref_supplier=${piecesRef})`);
+      }
+    } catch (err) {
+      results.errors.push(`Erreur facture pièces: ${err.message}`);
+    }
+
+    return results;
+  },
+
   async getSupplierInvoicesByPrestataire(prestataireId) {
     try {
       // Trouver le socid du fournisseur via ref_ext

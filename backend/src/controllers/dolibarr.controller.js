@@ -126,6 +126,48 @@ const dolibarrController = {
       });
     } catch (err) { next(err); }
   },
+
+  async createB2CInvoice(req, res, next) {
+    try {
+      const { clientId, clientName, amount, reference, description } = req.body;
+
+      if (!clientId || !clientName || !amount) {
+        return res.status(400).json({ success: false, message: 'clientId, clientName et amount sont requis' });
+      }
+
+      // Idempotence : éviter la double facturation sur la même référence
+      if (reference) {
+        const existing = await pool.query(
+          'SELECT dolibarr_invoice_id FROM orders WHERE reference = $1 AND dolibarr_invoice_id IS NOT NULL',
+          [reference]
+        );
+        if (existing.rows.length > 0) {
+          return res.json({
+            success: true,
+            data: { invoice_id: existing.rows[0].dolibarr_invoice_id, created: false },
+          });
+        }
+      }
+
+      const invoiceId = await dolibarrService.createInvoice({
+        clientId,
+        clientName,
+        amount: parseFloat(amount),
+        reference: reference || `B2C-${Date.now()}`,
+        description: description || 'Paiement B2C Kounhany',
+      });
+
+      // Stocker l'invoice_id sur l'order wallet si la référence existe
+      if (reference && invoiceId) {
+        await pool.query(
+          'UPDATE orders SET dolibarr_invoice_id = $1, updated_at = NOW() WHERE reference = $2',
+          [invoiceId, reference]
+        );
+      }
+
+      res.status(201).json({ success: true, data: { invoice_id: invoiceId, created: true } });
+    } catch (err) { next(err); }
+  },
 };
 
 module.exports = dolibarrController;

@@ -164,6 +164,61 @@ const clientsController = {
       res.json({ success: true, data: result.rows });
     } catch (err) { next(err); }
   },
+
+  async createOrGetB2C(req, res, next) {
+    try {
+      const { email, name, kounhany_uuid } = req.body;
+      if (!email || !name) {
+        return res.status(400).json({ success: false, message: 'email et name sont requis' });
+      }
+
+      // Client + wallet already exist → return immediately
+      const existing = await pool.query(
+        `SELECT c.client_id, cw.available_balance_id
+         FROM clients c
+         LEFT JOIN client_wallets cw ON cw.client_id = c.client_id
+         WHERE c.email = $1 AND c.active = true`,
+        [email]
+      );
+      if (existing.rows.length > 0 && existing.rows[0].available_balance_id) {
+        return res.json({ success: true, data: { client_id: existing.rows[0].client_id, created: false } });
+      }
+
+      let clientId;
+      if (existing.rows.length > 0) {
+        clientId = existing.rows[0].client_id;
+      } else {
+        clientId = `b2c_${Date.now()}`;
+        await pool.query(
+          `INSERT INTO clients (client_id, name, email, client_type, kounhany_uuid)
+           VALUES ($1, $2, $3, 'B2C', $4)`,
+          [clientId, name, email, kounhany_uuid || null]
+        );
+      }
+
+      const ledger = await blnkService.createLedger(clientId, name);
+      const ledgerId = ledger.ledger_id;
+      const [available, blocked, receivable] = await Promise.all([
+        blnkService.createBalance(ledgerId, 'MAD', 'available', clientId),
+        blnkService.createBalance(ledgerId, 'MAD', 'blocked',   clientId),
+        blnkService.createBalance(ledgerId, 'MAD', 'receivable', clientId),
+      ]);
+
+      await pool.query(
+        `INSERT INTO client_wallets (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [clientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+      );
+      await pool.query(
+        'UPDATE clients SET client_type = $1, updated_at = NOW() WHERE client_id = $2',
+        ['B2C', clientId]
+      );
+
+      console.log(`[B2C] ✅ Wallet créé: ${name} (${clientId})`);
+      return res.status(201).json({ success: true, data: { client_id: clientId, created: true } });
+
+    } catch (err) { next(err); }
+  },
 };
 
 

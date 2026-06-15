@@ -67,6 +67,8 @@ router.get('/', clientsController.list);
  *       404:
  *         description: Client introuvable
  */
+router.post('/b2c', clientsController.createOrGetB2C);
+
 router.get('/:clientId', clientsController.getOne);
 
 /**

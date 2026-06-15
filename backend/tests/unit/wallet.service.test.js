@@ -329,4 +329,45 @@ describe('Wallet Service — getClientWallet', () => {
     expect(result.client_id).toBe('client_123');
     expect(result.available_balance_id).toBe('bln_available');
   });
+
+  test('doit retourner le wallet company (prefix company_)', async () => {
+    const companyWallet = {
+      ...mockWallet,
+      client_id: 'company_abc-123',
+      available_balance_id: 'bln_company_available',
+      blocked_balance_id: 'bln_company_blocked',
+      receivable_balance_id: 'bln_company_receivable',
+    };
+    pool.query = jest.fn().mockResolvedValue({ rows: [companyWallet] });
+
+    const result = await walletService.getClientWallet('company_abc-123');
+    expect(result.client_id).toBe('company_abc-123');
+    expect(result.available_balance_id).toBe('bln_company_available');
+  });
+
+  test('doit retourner le wallet prestataire via fallback prestataire_wallets', async () => {
+    const prestaWallet = {
+      prestataire_id: 'prestataire_gar_001',
+      available_balance_id: 'bln_presta_available',
+      blocked_balance_id: 'bln_presta_blocked',
+      receivable_balance_id: 'bln_presta_receivable',
+      currency: 'MAD',
+    };
+    pool.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [] })        // client_wallets → vide
+      .mockResolvedValueOnce({ rows: [prestaWallet] }); // prestataire_wallets → trouvé
+
+    const result = await walletService.getClientWallet('prestataire_gar_001');
+    expect(result.client_id).toBe('prestataire_gar_001');
+    expect(result.available_balance_id).toBe('bln_presta_available');
+  });
+
+  test('doit lancer erreur 404 si introuvable dans client_wallets ET prestataire_wallets', async () => {
+    pool.query = jest.fn()
+      .mockResolvedValueOnce({ rows: [] })  // client_wallets → vide
+      .mockResolvedValueOnce({ rows: [] }); // prestataire_wallets → vide
+
+    await expect(walletService.getClientWallet('client_inexistant_total'))
+      .rejects.toMatchObject({ status: 404 });
+  });
 });
