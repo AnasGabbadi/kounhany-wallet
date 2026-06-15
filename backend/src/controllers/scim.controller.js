@@ -3,17 +3,20 @@ const blnkService = require('../services/blnk.service');
 const { v4: uuidv4 } = require('uuid');
 
 // Groupes admin — pas de wallet créé
-const IGNORED_GROUPS = (process.env.SCIM_IGNORED_GROUPS)
+const IGNORED_GROUPS = (process.env.SCIM_IGNORED_GROUPS || '')
     .split(',')
-    .map(g => g.trim());
+    .map(g => g.trim())
+    .filter(Boolean);
 
-const PRESTATAIRE_GROUPS = (process.env.SCIM_PRESTATAIRE_GROUPS)
+const PRESTATAIRE_GROUPS = (process.env.SCIM_PRESTATAIRE_GROUPS || '')
     .split(',')
-    .map(g => g.trim());
+    .map(g => g.trim())
+    .filter(Boolean);
 
-const PARENT_GROUPS = (process.env.SCIM_PARENT_GROUPS)
+const PARENT_GROUPS = (process.env.SCIM_PARENT_GROUPS || '')
     .split(',')
-    .map(g => g.trim());
+    .map(g => g.trim())
+    .filter(Boolean);
 
 function formatUser(client) {
     return {
