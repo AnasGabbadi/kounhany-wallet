@@ -452,10 +452,21 @@ const scimController = {
                 const companyClientId = `company_${groupId}`;
                 const companyName = displayName;
 
-                const existingCompany = await pool.query(
+                let existingCompany = await pool.query(
                     'SELECT * FROM clients WHERE client_id = $1',
                     [companyClientId]
                 );
+
+                // Fallback par nom : Authentik peut envoyer un UUID différent à chaque push
+                if (existingCompany.rows.length === 0) {
+                    existingCompany = await pool.query(
+                        "SELECT * FROM clients WHERE name = $1 AND client_type = 'FLEET'",
+                        [companyName]
+                    );
+                    if (existingCompany.rows.length > 0) {
+                        console.log(`[SCIM] ℹ️ Company trouvée par nom (UUID rotatif) : ${companyName} → ${existingCompany.rows[0].client_id}`);
+                    }
+                }
 
                 if (existingCompany.rows.length === 0) {
                     console.log(`[SCIM] Création wallet company: ${companyName}`);
@@ -483,7 +494,30 @@ const scimController = {
 
                     console.log(`[SCIM] ✅ Wallet company créé : ${companyName} (${companyClientId})`);
                 } else {
-                    console.log(`[SCIM] ℹ️ Wallet company existant : ${companyName}`);
+                    console.log(`[SCIM] ℹ️ Client company existant : ${companyName}`);
+                    const walletCheck = await pool.query(
+                        'SELECT client_id FROM client_wallets WHERE client_id = $1',
+                        [companyClientId]
+                    );
+                    if (walletCheck.rows.length === 0) {
+                        console.log(`[SCIM] ⚠️ Wallet manquant pour company existante — recréation : ${companyName}`);
+                        const ledger = await blnkService.createLedger(companyClientId, companyName);
+                        const ledgerId = ledger.ledger_id;
+                        const [available, blocked, receivable] = await Promise.all([
+                            blnkService.createBalance(ledgerId, 'MAD', 'available', companyClientId),
+                            blnkService.createBalance(ledgerId, 'MAD', 'blocked', companyClientId),
+                            blnkService.createBalance(ledgerId, 'MAD', 'receivable', companyClientId),
+                        ]);
+                        await pool.query(
+                            `INSERT INTO client_wallets
+                             (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+                             VALUES ($1, $2, $3, $4, $5)`,
+                            [companyClientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                        );
+                        console.log(`[SCIM] ✅ Wallet company recréé : ${companyName} (${companyClientId})`);
+                    } else {
+                        console.log(`[SCIM] ✅ Wallet company OK : ${companyName}`);
+                    }
                 }
 
                 // ── Lier tous les members au wallet company ──
