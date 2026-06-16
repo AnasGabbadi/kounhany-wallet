@@ -144,3 +144,14 @@ CREATE INDEX IF NOT EXISTS idx_prestataire_orders_status ON prestataire_orders(s
 ALTER TABLE prestataires ALTER COLUMN garage_uuid DROP NOT NULL;
 ALTER TABLE prestataires ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'GARAGE'
   CHECK (type IN ('GARAGE', 'PROVIDER'));
+
+-- ─── SCIM GROUP CACHE ─────────────────────────────────────────
+-- Mapping groupId (Authentik) → displayName, persisté pour survivre aux restarts
+-- du backend (sinon getGroup() retourne 404 pour les groupes ignorés/parents
+-- après un restart, et Authentik recrée des doublons).
+CREATE TABLE IF NOT EXISTS scim_group_cache (
+  group_id VARCHAR(100) PRIMARY KEY,
+  group_name VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
