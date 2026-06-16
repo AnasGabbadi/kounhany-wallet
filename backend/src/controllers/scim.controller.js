@@ -426,10 +426,17 @@ const scimController = {
     },
 
     async createGroup(req, res) {
+        const id = uuidv4();
+        const externalId = req.body.externalId || req.body.id;
         res.status(201).json({
             schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-            id: uuidv4(),
+            id,
+            externalId,
             displayName: req.body.displayName,
+            meta: {
+                resourceType: 'Group',
+                location: `/scim/v2/Groups/${id}`,
+            },
         });
     },
 
