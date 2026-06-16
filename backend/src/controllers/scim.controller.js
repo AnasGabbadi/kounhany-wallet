@@ -212,13 +212,22 @@ const scimController = {
                 console.log(`[SCIM] ✅ Client créé : ${displayName} (${clientId}) type: ${clientType}`);
             }
 
+            // Doublon détecté par email avec un client_id local différent (clientId est
+            // recalculé via `client_${Date.now()}` à chaque appel quand userName ne
+            // matche aucun préfixe garage_/provider_/b2c_) : à partir d'ici il faut
+            // continuer à travailler avec le client_id réellement en base, sinon les
+            // requêtes suivantes (prestataires, SELECT final) ne retrouvent jamais la
+            // ligne et `client.rows[0]` reste undefined → crash dans formatUser()
+            // ("Cannot read properties of undefined (reading 'scim_id')").
+            const resolvedClientId = existing.rows.length > 0 ? existing.rows[0].client_id : clientId;
+
             // Créer wallet B2C si b2c user
             if (isB2C && !isPrestataire) {
+                const walletClientId = resolvedClientId;
                 const walletCheck = await pool.query(
                     'SELECT * FROM client_wallets WHERE client_id = $1',
-                    [existing.rows.length > 0 ? existing.rows[0].client_id : clientId]
+                    [walletClientId]
                 );
-                const walletClientId = existing.rows.length > 0 ? existing.rows[0].client_id : clientId;
                 if (walletCheck.rows.length === 0) {
                     const ledger = await blnkService.createLedger(walletClientId, displayName);
                     const ledgerId = ledger.ledger_id;
@@ -242,40 +251,53 @@ const scimController = {
             // Créer wallet prestataire si garage ou provider
             if (isPrestataire) {
                 const existingPresta = await pool.query(
-                    'SELECT * FROM prestataires WHERE prestataire_id = $1', [clientId]
+                    'SELECT * FROM prestataires WHERE prestataire_id = $1', [resolvedClientId]
                 );
                 if (existingPresta.rows.length === 0) {
                     await pool.query(
                         `INSERT INTO prestataires (prestataire_id, name, email, type)
                      VALUES ($1, $2, $3, $4)`,
-                        [clientId, displayName, email, prestataireType]
+                        [resolvedClientId, displayName, email, prestataireType]
                     );
                 }
 
                 const walletCheck = await pool.query(
-                    'SELECT * FROM prestataire_wallets WHERE prestataire_id = $1', [clientId]
+                    'SELECT * FROM prestataire_wallets WHERE prestataire_id = $1', [resolvedClientId]
                 );
                 if (walletCheck.rows.length === 0) {
-                    const ledger = await blnkService.createLedger(clientId, displayName);
+                    const ledger = await blnkService.createLedger(resolvedClientId, displayName);
                     const ledgerId = ledger.ledger_id;
                     const [available, blocked, receivable] = await Promise.all([
-                        blnkService.createBalance(ledgerId, 'MAD', 'available', clientId),
-                        blnkService.createBalance(ledgerId, 'MAD', 'blocked', clientId),
-                        blnkService.createBalance(ledgerId, 'MAD', 'receivable', clientId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'available', resolvedClientId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'blocked', resolvedClientId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'receivable', resolvedClientId),
                     ]);
                     await pool.query(
                         `INSERT INTO prestataire_wallets
                      (prestataire_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
                      VALUES ($1, $2, $3, $4, $5)`,
-                        [clientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                        [resolvedClientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
                     );
-                    console.log(`[SCIM] ✅ Wallet ${prestataireType} créé : ${displayName} (${clientId})`);
+                    console.log(`[SCIM] ✅ Wallet ${prestataireType} créé : ${displayName} (${resolvedClientId})`);
                 }
             }
 
             const client = await pool.query(
-                'SELECT * FROM clients WHERE client_id = $1', [clientId]
+                'SELECT * FROM clients WHERE client_id = $1', [resolvedClientId]
             );
+
+            // Garde-fou : si malgré la résolution ci-dessus la ligne reste introuvable
+            // (incohérence inattendue), on l'évite plutôt que de crasher dans
+            // formatUser() avec "Cannot read properties of undefined (reading 'scim_id')".
+            if (!client.rows[0]) {
+                console.error(`[SCIM] createUser: client introuvable après upsert — clientId=${resolvedClientId} email=${email}`);
+                const fallback = await pool.query('SELECT * FROM clients WHERE email = $1', [email]);
+                if (fallback.rows[0]) {
+                    return res.status(200).json(formatUser(fallback.rows[0]));
+                }
+                return res.status(500).json({ error: 'User upsert failed: client not found after creation' });
+            }
+
             res.status(201).json(formatUser(client.rows[0]));
 
         } catch (err) {
