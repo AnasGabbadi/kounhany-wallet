@@ -18,6 +18,11 @@ const PARENT_GROUPS = (process.env.SCIM_PARENT_GROUPS || '')
     .map(g => g.trim())
     .filter(Boolean);
 
+// Cache mémoire groupId (Authentik) → displayName.
+// Les GET /Groups/:id n'ont pas de body — on retient le nom vu lors du dernier
+// POST/PUT/PATCH pour pouvoir répondre correctement aux vérifications d'existence.
+const groupNameCache = new Map();
+
 function formatUser(client) {
     return {
         schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
@@ -159,13 +164,20 @@ const scimController = {
 
             if (existing.rows.length > 0) {
                 console.log(`[SCIM] User déjà existant : ${email} (${clientId})`);
-                // Corriger client_type si B2C mais type manquant
-                if (isB2C && existing.rows[0].client_type !== 'B2C') {
+                // Corriger client_type si B2C mais type manquant + backfill scim_id si manquant
+                // (sinon updateGroup() ne retrouve jamais ce user par scim_id pour la liaison company)
+                const needsB2CFix = isB2C && existing.rows[0].client_type !== 'B2C';
+                const needsScimIdBackfill = !existing.rows[0].scim_id;
+                if (needsB2CFix || needsScimIdBackfill) {
                     await pool.query(
-                        'UPDATE clients SET client_type = $1, scim_id = $2, updated_at = NOW() WHERE client_id = $3',
-                        ['B2C', scimId, existing.rows[0].client_id]
+                        `UPDATE clients SET
+                            client_type = COALESCE($1, client_type),
+                            scim_id = COALESCE(scim_id, $2),
+                            updated_at = NOW()
+                         WHERE client_id = $3`,
+                        [needsB2CFix ? 'B2C' : null, scimId, existing.rows[0].client_id]
                     );
-                    console.log(`[SCIM] Client_type corrigé → B2C : ${existing.rows[0].client_id}`);
+                    console.log(`[SCIM] Client mis à jour (B2C=${needsB2CFix}, scim_id backfill=${needsScimIdBackfill}) : ${existing.rows[0].client_id}`);
                 }
             } else {
                 // Extraire le kounhany_uuid depuis le userName (garage_, provider_ ou b2c_)
@@ -312,13 +324,18 @@ const scimController = {
             }
 
             // Mise à jour normale
+            // scim_id = COALESCE(scim_id, ...) : si le client a été trouvé via le
+            // fallback client_id (ex: créé par un autre chemin sans scim_id), on le
+            // backfill ici — sinon updateGroup() ne le retrouvera jamais par scim_id
+            // pour la liaison company_client_id (Bug 3).
             await pool.query(
-                `UPDATE clients SET 
+                `UPDATE clients SET
         name = COALESCE($1, name),
         email = COALESCE($2, email),
+        scim_id = COALESCE(scim_id, $3),
         updated_at = NOW()
-       WHERE client_id = $3`,
-                [displayName, email, client.client_id]
+       WHERE client_id = $4`,
+                [displayName, email, req.params.id, client.client_id]
             );
 
             const updated = await pool.query(
@@ -423,6 +440,20 @@ const scimController = {
             const groupId = req.params.id;
             const companyClientId = `company_${groupId}`;
 
+            // Les groupes ignorés/parents (Fleet, Logistique, B2C, Wallet Admins...) ne
+            // créent jamais de wallet → jamais de ligne dans `clients`. Sans ce check,
+            // GET retourne systématiquement 404 et Authentik recrée le groupe via POST.
+            const displayName = req.body?.displayName || groupNameCache.get(groupId);
+            const isIgnored = displayName &&
+                (IGNORED_GROUPS.includes(displayName) || PARENT_GROUPS.includes(displayName));
+            if (isIgnored) {
+                return res.status(200).json({
+                    schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+                    id: groupId,
+                    displayName,
+                });
+            }
+
             const result = await pool.query(
                 'SELECT * FROM clients WHERE client_id = $1',
                 [companyClientId]
@@ -456,6 +487,10 @@ const scimController = {
     async createGroup(req, res) {
         const id = uuidv4();
         const externalId = req.body.externalId || req.body.id;
+        if (req.body.displayName) {
+            groupNameCache.set(id, req.body.displayName);
+            if (externalId) groupNameCache.set(externalId, req.body.displayName);
+        }
         res.status(201).json({
             schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
             id,
@@ -476,11 +511,20 @@ const scimController = {
             console.log('[SCIM RAW updateGroup]', JSON.stringify({ displayName, members }));
             console.log(`[SCIM] updateGroup: ${displayName} (${groupId}) — ${(members || []).length} members`);
 
+            if (displayName) groupNameCache.set(groupId, displayName);
+
             const B2B_PARENT_GROUPS = ['Fleet', 'Logistique'];
             const isParentGroup = B2B_PARENT_GROUPS.includes(displayName);
-            const isCompanyGroup = !isParentGroup &&
+            // !!displayName est requis : un displayName undefined/vide ne matche aucune
+            // liste d'exclusion ci-dessous, donc sans ce check isCompanyGroup devenait
+            // `true` par défaut et tentait l'INSERT avec name = undefined (Bug 2 → 500 SQL).
+            const isCompanyGroup = !!displayName && !isParentGroup &&
                 !['authentik Admins', 'Wallet Admins', 'Monitoring Admins', 'B2C',
                     'Garages', 'Providers', 'Prestataires'].includes(displayName);
+
+            if (!displayName) {
+                console.warn(`[SCIM] updateGroup: displayName manquant pour ${groupId} — skip création/maj company`);
+            }
 
             // ── CAS B2B company → wallet company partagé ──
             if (isCompanyGroup && members && members.length > 0) {
@@ -850,12 +894,15 @@ const scimController = {
             const { Operations } = req.body;
             const companyClientId = `company_${groupId}`;
 
-            // Récupérer le displayName actuel du groupe (pas toujours dans le PATCH)
+            // Récupérer le displayName actuel du groupe (pas toujours dans le PATCH) :
+            // 1) nom déjà en DB, 2) body du PATCH, 3) cache mémoire (vu lors d'un précédent POST/PUT)
             const existing = await pool.query(
                 'SELECT * FROM clients WHERE client_id = $1',
                 [companyClientId]
             );
-            const displayName = existing.rows[0]?.name || req.body.displayName;
+            const displayName = existing.rows[0]?.name || req.body.displayName || groupNameCache.get(groupId);
+
+            if (displayName) groupNameCache.set(groupId, displayName);
 
             // Construire la liste de members à partir des opérations PATCH
             let members = null;
@@ -878,6 +925,17 @@ const scimController = {
                     schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
                     id: groupId,
                     displayName,
+                });
+            }
+
+            // displayName toujours introuvable (ni DB, ni body, ni cache) : impossible de
+            // créer/identifier un wallet company sans nom — on skip plutôt que d'envoyer
+            // `name = undefined` à l'INSERT (provoquait l'erreur SQL du Bug 2).
+            if (!displayName) {
+                console.warn(`[SCIM] patchGroup: displayName introuvable pour ${groupId} — skip (pas de company existante à mettre à jour)`);
+                return res.status(200).json({
+                    schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+                    id: groupId,
                 });
             }
 
