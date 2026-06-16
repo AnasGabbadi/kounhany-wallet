@@ -824,12 +824,27 @@ const scimController = {
                             'SELECT client_id FROM clients WHERE client_id = $1', [newClientId]
                         );
                         if (dupCheck.rows.length === 0) {
-                            await pool.query(
-                                'UPDATE clients SET client_id = $1, client_type = $2, updated_at = NOW() WHERE scim_id = $3',
-                                [newClientId, 'PRESTATAIRE', member.value]
+                            // Un wallet (client_wallets) peut déjà référencer ce client_id —
+                            // FK client_wallets_client_id_fkey sans ON UPDATE CASCADE, donc
+                            // renommer la PK plante l'UPDATE. Dans ce cas on garde le
+                            // client_id existant et on se contente de relier par scim_id.
+                            const walletRef = await pool.query(
+                                'SELECT 1 FROM client_wallets WHERE client_id = $1', [clientId]
                             );
-                            clientId = newClientId;
-                            console.log(`[SCIM] Client renommé : ${client.client_id} → ${newClientId}`);
+                            if (walletRef.rows.length === 0) {
+                                await pool.query(
+                                    'UPDATE clients SET client_id = $1, client_type = $2, updated_at = NOW() WHERE scim_id = $3',
+                                    [newClientId, 'PRESTATAIRE', member.value]
+                                );
+                                clientId = newClientId;
+                                console.log(`[SCIM] Client renommé : ${client.client_id} → ${newClientId}`);
+                            } else {
+                                await pool.query(
+                                    'UPDATE clients SET scim_id = $1, client_type = $2, updated_at = NOW() WHERE client_id = $3',
+                                    [member.value, 'PRESTATAIRE', clientId]
+                                );
+                                console.log(`[SCIM] ℹ️ Garage déjà lié à un wallet — client_id conservé (${clientId}), scim_id mis à jour`);
+                            }
                         } else {
                             clientId = newClientId;
                         }
@@ -906,12 +921,27 @@ const scimController = {
                             'SELECT client_id FROM clients WHERE client_id = $1', [newClientId]
                         );
                         if (dupCheck.rows.length === 0) {
-                            await pool.query(
-                                'UPDATE clients SET client_id = $1, client_type = $2, updated_at = NOW() WHERE scim_id = $3',
-                                [newClientId, 'PRESTATAIRE', member.value]
+                            // Un wallet (client_wallets) peut déjà référencer ce client_id —
+                            // FK client_wallets_client_id_fkey sans ON UPDATE CASCADE, donc
+                            // renommer la PK plante l'UPDATE. Dans ce cas on garde le
+                            // client_id existant et on se contente de relier par scim_id.
+                            const walletRef = await pool.query(
+                                'SELECT 1 FROM client_wallets WHERE client_id = $1', [clientId]
                             );
-                            clientId = newClientId;
-                            console.log(`[SCIM] Client renommé : ${client.client_id} → ${newClientId}`);
+                            if (walletRef.rows.length === 0) {
+                                await pool.query(
+                                    'UPDATE clients SET client_id = $1, client_type = $2, updated_at = NOW() WHERE scim_id = $3',
+                                    [newClientId, 'PRESTATAIRE', member.value]
+                                );
+                                clientId = newClientId;
+                                console.log(`[SCIM] Client renommé : ${client.client_id} → ${newClientId}`);
+                            } else {
+                                await pool.query(
+                                    'UPDATE clients SET scim_id = $1, client_type = $2, updated_at = NOW() WHERE client_id = $3',
+                                    [member.value, 'PRESTATAIRE', clientId]
+                                );
+                                console.log(`[SCIM] ℹ️ Provider déjà lié à un wallet — client_id conservé (${clientId}), scim_id mis à jour`);
+                            }
                         } else {
                             clientId = newClientId;
                         }
