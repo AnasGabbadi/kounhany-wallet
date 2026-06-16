@@ -18,10 +18,27 @@ const PARENT_GROUPS = (process.env.SCIM_PARENT_GROUPS || '')
     .map(g => g.trim())
     .filter(Boolean);
 
-// Cache mémoire groupId (Authentik) → displayName.
+// Cache groupId (Authentik) → displayName, persisté en DB (table scim_group_cache).
 // Les GET /Groups/:id n'ont pas de body — on retient le nom vu lors du dernier
 // POST/PUT/PATCH pour pouvoir répondre correctement aux vérifications d'existence.
-const groupNameCache = new Map();
+// Persisté plutôt qu'en mémoire pour survivre aux restarts du backend.
+async function cacheGroupName(groupId, groupName) {
+    if (!groupId || !groupName) return;
+    await pool.query(
+        `INSERT INTO scim_group_cache (group_id, group_name) VALUES ($1, $2)
+         ON CONFLICT (group_id) DO UPDATE SET group_name = $2, updated_at = NOW()`,
+        [groupId, groupName]
+    );
+}
+
+async function getCachedGroupName(groupId) {
+    if (!groupId) return null;
+    const result = await pool.query(
+        'SELECT group_name FROM scim_group_cache WHERE group_id = $1',
+        [groupId]
+    );
+    return result.rows[0]?.group_name || null;
+}
 
 function formatUser(client) {
     return {
@@ -443,7 +460,7 @@ const scimController = {
             // Les groupes ignorés/parents (Fleet, Logistique, B2C, Wallet Admins...) ne
             // créent jamais de wallet → jamais de ligne dans `clients`. Sans ce check,
             // GET retourne systématiquement 404 et Authentik recrée le groupe via POST.
-            const displayName = req.body?.displayName || groupNameCache.get(groupId);
+            const displayName = req.body?.displayName || await getCachedGroupName(groupId);
             const isIgnored = displayName &&
                 (IGNORED_GROUPS.includes(displayName) || PARENT_GROUPS.includes(displayName));
             if (isIgnored) {
@@ -488,8 +505,12 @@ const scimController = {
         const id = uuidv4();
         const externalId = req.body.externalId || req.body.id;
         if (req.body.displayName) {
-            groupNameCache.set(id, req.body.displayName);
-            if (externalId) groupNameCache.set(externalId, req.body.displayName);
+            try {
+                await cacheGroupName(id, req.body.displayName);
+                if (externalId) await cacheGroupName(externalId, req.body.displayName);
+            } catch (err) {
+                console.error('[SCIM] Erreur cacheGroupName (createGroup):', err.message);
+            }
         }
         res.status(201).json({
             schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
@@ -511,7 +532,7 @@ const scimController = {
             console.log('[SCIM RAW updateGroup]', JSON.stringify({ displayName, members }));
             console.log(`[SCIM] updateGroup: ${displayName} (${groupId}) — ${(members || []).length} members`);
 
-            if (displayName) groupNameCache.set(groupId, displayName);
+            if (displayName) await cacheGroupName(groupId, displayName);
 
             const B2B_PARENT_GROUPS = ['Fleet', 'Logistique'];
             const isParentGroup = B2B_PARENT_GROUPS.includes(displayName);
@@ -895,14 +916,14 @@ const scimController = {
             const companyClientId = `company_${groupId}`;
 
             // Récupérer le displayName actuel du groupe (pas toujours dans le PATCH) :
-            // 1) nom déjà en DB, 2) body du PATCH, 3) cache mémoire (vu lors d'un précédent POST/PUT)
+            // 1) nom déjà en DB, 2) body du PATCH, 3) cache persisté (vu lors d'un précédent POST/PUT)
             const existing = await pool.query(
                 'SELECT * FROM clients WHERE client_id = $1',
                 [companyClientId]
             );
-            const displayName = existing.rows[0]?.name || req.body.displayName || groupNameCache.get(groupId);
+            const displayName = existing.rows[0]?.name || req.body.displayName || await getCachedGroupName(groupId);
 
-            if (displayName) groupNameCache.set(groupId, displayName);
+            if (displayName) await cacheGroupName(groupId, displayName);
 
             // Construire la liste de members à partir des opérations PATCH
             let members = null;
