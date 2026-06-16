@@ -638,9 +638,40 @@ const scimController = {
                     );
                     if (upd.rowCount > 0) {
                         console.log(`[SCIM] ✅ User lié : ${member.display || member.value} → ${companyClientId}`);
-                    } else {
-                        console.warn(`[SCIM] ⚠️ User non trouvé pour liaison company : scim_id=${member.value} display=${member.display}`);
+                        continue;
                     }
+
+                    // rowCount = 0 : soit déjà lié, soit le client n'existe pas en DB.
+                    const existing = await pool.query(
+                        `SELECT client_id FROM clients
+                         WHERE scim_id = $1 OR ($2::text IS NOT NULL AND email = $2)`,
+                        [member.value, memberEmail]
+                    );
+                    if (existing.rows.length > 0) {
+                        console.log(`[SCIM] ℹ️ User déjà lié : ${member.display || member.value} → ${companyClientId}`);
+                        continue;
+                    }
+
+                    // Authentik envoie le PUT /scim/v2/Users avant le PUT /Groups, mais
+                    // updateUser() ne crée pas de client si le scim_id est inconnu (no-op
+                    // par design pour ne pas créer de wallet hors groupe) : Authentik ne
+                    // fait jamais de POST /Users pour les membres déjà existants côté IdP,
+                    // seulement des PUT. Sans ce fallback, ces membres ne sont jamais
+                    // matérialisés dans `clients` et restent orphelins de leur company.
+                    console.warn(`[SCIM] ⚠️ User non trouvé pour liaison company : scim_id=${member.value} display=${member.display} — création entrée minimale`);
+                    const fleetClientId = `client_${member.value}`;
+                    const fleetName = member.display || `Fleet ${member.value}`;
+                    await pool.query(
+                        `INSERT INTO clients (client_id, name, email, scim_id, client_type, company_client_id)
+                         VALUES ($1, $2, $3, $4, 'FLEET', $5)
+                         ON CONFLICT (client_id) DO UPDATE SET
+                            scim_id = COALESCE(clients.scim_id, EXCLUDED.scim_id),
+                            company_client_id = EXCLUDED.company_client_id,
+                            client_type = 'FLEET',
+                            updated_at = NOW()`,
+                        [fleetClientId, fleetName, memberEmail, member.value, companyClientId]
+                    );
+                    console.log(`[SCIM] ✅ User créé et lié : ${fleetName} → ${companyClientId}`);
                 }
             }
 
