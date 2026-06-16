@@ -419,17 +419,52 @@ const scimController = {
     },
 
     async getGroup(req, res) {
-        res.status(404).json({
-            schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'],
-            status: 404,
-        });
+        try {
+            const groupId = req.params.id;
+            const companyClientId = `company_${groupId}`;
+
+            const result = await pool.query(
+                'SELECT * FROM clients WHERE client_id = $1',
+                [companyClientId]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({
+                    schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'],
+                    status: 404,
+                    detail: 'Group not found',
+                });
+            }
+
+            const client = result.rows[0];
+            res.json({
+                schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+                id: groupId,
+                externalId: groupId,
+                displayName: client.name,
+                meta: {
+                    resourceType: 'Group',
+                    location: `/scim/v2/Groups/${groupId}`,
+                },
+            });
+        } catch (err) {
+            console.error('[SCIM] Erreur getGroup:', err.message);
+            res.status(500).json({ error: err.message });
+        }
     },
 
     async createGroup(req, res) {
+        const id = uuidv4();
+        const externalId = req.body.externalId || req.body.id;
         res.status(201).json({
             schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-            id: uuidv4(),
+            id,
+            externalId,
             displayName: req.body.displayName,
+            meta: {
+                resourceType: 'Group',
+                location: `/scim/v2/Groups/${id}`,
+            },
         });
     },
 
@@ -452,10 +487,21 @@ const scimController = {
                 const companyClientId = `company_${groupId}`;
                 const companyName = displayName;
 
-                const existingCompany = await pool.query(
+                let existingCompany = await pool.query(
                     'SELECT * FROM clients WHERE client_id = $1',
                     [companyClientId]
                 );
+
+                // Fallback par nom : Authentik peut envoyer un UUID différent à chaque push
+                if (existingCompany.rows.length === 0) {
+                    existingCompany = await pool.query(
+                        "SELECT * FROM clients WHERE name = $1 AND client_type = 'FLEET'",
+                        [companyName]
+                    );
+                    if (existingCompany.rows.length > 0) {
+                        console.log(`[SCIM] ℹ️ Company trouvée par nom (UUID rotatif) : ${companyName} → ${existingCompany.rows[0].client_id}`);
+                    }
+                }
 
                 if (existingCompany.rows.length === 0) {
                     console.log(`[SCIM] Création wallet company: ${companyName}`);
@@ -483,7 +529,30 @@ const scimController = {
 
                     console.log(`[SCIM] ✅ Wallet company créé : ${companyName} (${companyClientId})`);
                 } else {
-                    console.log(`[SCIM] ℹ️ Wallet company existant : ${companyName}`);
+                    console.log(`[SCIM] ℹ️ Client company existant : ${companyName}`);
+                    const walletCheck = await pool.query(
+                        'SELECT client_id FROM client_wallets WHERE client_id = $1',
+                        [companyClientId]
+                    );
+                    if (walletCheck.rows.length === 0) {
+                        console.log(`[SCIM] ⚠️ Wallet manquant pour company existante — recréation : ${companyName}`);
+                        const ledger = await blnkService.createLedger(companyClientId, companyName);
+                        const ledgerId = ledger.ledger_id;
+                        const [available, blocked, receivable] = await Promise.all([
+                            blnkService.createBalance(ledgerId, 'MAD', 'available', companyClientId),
+                            blnkService.createBalance(ledgerId, 'MAD', 'blocked', companyClientId),
+                            blnkService.createBalance(ledgerId, 'MAD', 'receivable', companyClientId),
+                        ]);
+                        await pool.query(
+                            `INSERT INTO client_wallets
+                             (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+                             VALUES ($1, $2, $3, $4, $5)`,
+                            [companyClientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                        );
+                        console.log(`[SCIM] ✅ Wallet company recréé : ${companyName} (${companyClientId})`);
+                    } else {
+                        console.log(`[SCIM] ✅ Wallet company OK : ${companyName}`);
+                    }
                 }
 
                 // ── Lier tous les members au wallet company ──
@@ -768,6 +837,56 @@ const scimController = {
             });
         } catch (err) {
             console.error('[SCIM] Erreur updateGroup:', err.message);
+            res.status(500).json({ error: err.message });
+        }
+    },
+
+    // PATCH /scim/v2/Groups/:id — Authentik envoie des Operations (add/replace members)
+    // au lieu du body complet attendu par updateGroup. On normalise puis on délègue
+    // à updateGroup pour réutiliser toute la logique de création de wallet.
+    async patchGroup(req, res) {
+        try {
+            const groupId = req.params.id;
+            const { Operations } = req.body;
+            const companyClientId = `company_${groupId}`;
+
+            // Récupérer le displayName actuel du groupe (pas toujours dans le PATCH)
+            const existing = await pool.query(
+                'SELECT * FROM clients WHERE client_id = $1',
+                [companyClientId]
+            );
+            const displayName = existing.rows[0]?.name || req.body.displayName;
+
+            // Construire la liste de members à partir des opérations PATCH
+            let members = null;
+            for (const op of Operations || []) {
+                const path = (op.path || '').toLowerCase();
+                if (path === 'members' || path === '') {
+                    if (op.op === 'remove') {
+                        members = [];
+                    } else if (Array.isArray(op.value)) {
+                        members = op.value;
+                    } else if (op.value?.members && Array.isArray(op.value.members)) {
+                        members = op.value.members;
+                    }
+                }
+            }
+
+            if (members === null) {
+                console.log(`[SCIM] patchGroup: aucune Operation members exploitable — ${groupId}`);
+                return res.json({
+                    schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+                    id: groupId,
+                    displayName,
+                });
+            }
+
+            // Déléguer à updateGroup avec un body normalisé (réutilise toute la logique métier)
+            req.body.displayName = displayName;
+            req.body.members = members;
+            return scimController.updateGroup(req, res);
+        } catch (err) {
+            console.error('[SCIM] Erreur patchGroup:', err.message);
             res.status(500).json({ error: err.message });
         }
     },
