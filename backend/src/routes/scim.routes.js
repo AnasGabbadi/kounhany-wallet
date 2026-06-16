@@ -375,6 +375,26 @@ router.put('/Groups/:id', scimController.updateGroup);
 /**
  * @swagger
  * /scim/v2/Groups/{id}:
+ *   patch:
+ *     summary: Mettre à jour partiellement un groupe SCIM (Operations add/remove members)
+ *     tags: [SCIM]
+ *     security:
+ *       - ScimBearer: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Groupe mis à jour
+ */
+router.patch('/Groups/:id', scimController.patchGroup);
+
+/**
+ * @swagger
+ * /scim/v2/Groups/{id}:
  *   delete:
  *     summary: Supprimer un groupe SCIM
  *     tags: [SCIM]
