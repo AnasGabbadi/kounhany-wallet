@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS kounhany_uuid VARCHAR(100) NULL;
+
 -- ─── WALLETS ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS client_wallets (
   id SERIAL PRIMARY KEY,
