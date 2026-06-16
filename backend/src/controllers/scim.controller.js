@@ -461,9 +461,33 @@ const scimController = {
             // créent jamais de wallet → jamais de ligne dans `clients`. Sans ce check,
             // GET retourne systématiquement 404 et Authentik recrée le groupe via POST.
             const displayName = req.body?.displayName || await getCachedGroupName(groupId);
-            const isIgnored = displayName &&
-                (IGNORED_GROUPS.includes(displayName) || PARENT_GROUPS.includes(displayName));
-            if (isIgnored) {
+
+            const result = await pool.query(
+                'SELECT * FROM clients WHERE client_id = $1',
+                [companyClientId]
+            );
+
+            if (result.rows.length > 0) {
+                const client = result.rows[0];
+                return res.json({
+                    schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+                    id: groupId,
+                    externalId: groupId,
+                    displayName: client.name,
+                    meta: {
+                        resourceType: 'Group',
+                        location: `/scim/v2/Groups/${groupId}`,
+                    },
+                });
+            }
+
+            // Pas de wallet company pour ce groupe — mais s'il est connu dans notre
+            // cache (vu lors d'un précédent POST/PUT/PATCH), c'est un groupe légitime
+            // qu'on ne matérialise jamais dans `clients` (ignoré, parent, prestataire,
+            // B2C, Read-only, ou tout autre groupe non-company). On retourne un 200
+            // fictif plutôt qu'un 404, sinon Authentik recrée le groupe via POST à
+            // chaque sync → doublons.
+            if (displayName) {
                 return res.status(200).json({
                     schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
                     id: groupId,
@@ -471,29 +495,10 @@ const scimController = {
                 });
             }
 
-            const result = await pool.query(
-                'SELECT * FROM clients WHERE client_id = $1',
-                [companyClientId]
-            );
-
-            if (result.rows.length === 0) {
-                return res.status(404).json({
-                    schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'],
-                    status: 404,
-                    detail: 'Group not found',
-                });
-            }
-
-            const client = result.rows[0];
-            res.json({
-                schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
-                id: groupId,
-                externalId: groupId,
-                displayName: client.name,
-                meta: {
-                    resourceType: 'Group',
-                    location: `/scim/v2/Groups/${groupId}`,
-                },
+            return res.status(404).json({
+                schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'],
+                status: 404,
+                detail: 'Group not found',
             });
         } catch (err) {
             console.error('[SCIM] Erreur getGroup:', err.message);
