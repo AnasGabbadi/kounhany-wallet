@@ -201,35 +201,64 @@ class OrdersService {
       o.description || `Confirmation commande ${o.reference}`
     );
 
-    // ✅ Lire prestataires depuis metadata
     const metadata = o.metadata || {};
     const dolibarrService = require('./dolibarr.service');
-    const prestatairesService = require('./prestataires.service');
 
     // ─── Helpers ───────────────────────────────────────────────────────────────
 
-    // Trouve un prestataire par garage_uuid dans la table (colonne réelle = garage_uuid)
-    const findPrestaByUuid = (uuid) => db.query(
-      `SELECT * FROM prestataires WHERE prestataire_id = $1 OR garage_uuid = $2 LIMIT 1`,
-      [`prestataire_${uuid}`, uuid]
+    // Cherche un prestataire Kounhany (garage_xxx / provider_xxx) par email
+    const findPrestaByEmail = (email) => db.query(
+      `SELECT * FROM prestataires WHERE email = $1 AND prestataire_id ~ '^(garage|provider)_' LIMIT 1`,
+      [email]
     );
 
-    // Auto-crée le prestataire s'il n'existe pas, retourne la row
+    // Résout le vrai prestataire Kounhany à partir d'un UUID Fleet/Authentik.
+    // Stratégie : UUID direct → bridge email via clients (scim_id) → email via clients (client_id/kounhany_uuid).
+    // Ne crée JAMAIS de faux prestataire — retourne null si introuvable.
     const resolvePrestataire = async (uuid, nameFallback) => {
-      let res = await findPrestaByUuid(uuid);
-      if (res.rows.length > 0) {
-        console.log(`[Confirm] ℹ️ Prestataire trouvé — ${res.rows[0].prestataire_id}`);
-        return res.rows[0];
+      // 1. Lookup direct : prestataire_id = 'prestataire_<uuid>' ou garage_uuid = uuid
+      const directRes = await db.query(
+        `SELECT * FROM prestataires WHERE prestataire_id = $1 OR garage_uuid = $2 LIMIT 1`,
+        [`prestataire_${uuid}`, uuid]
+      );
+      if (directRes.rows.length > 0) {
+        const p = directRes.rows[0];
+        // C'est un vrai garage Kounhany
+        if (/^(garage|provider)_/.test(p.prestataire_id)) {
+          console.log(`[Confirm] ℹ️ Prestataire Kounhany trouvé par UUID — ${p.prestataire_id}`);
+          return p;
+        }
+        // C'est une entrée auto-créée (prestataire_<uuid>) — tenter bridge email
+        if (p.email) {
+          const byEmail = await findPrestaByEmail(p.email);
+          if (byEmail.rows.length > 0) {
+            console.log(`[Confirm] ✅ Prestataire Kounhany trouvé via email (entrée fake→réelle) — ${byEmail.rows[0].prestataire_id}`);
+            return byEmail.rows[0];
+          }
+        }
       }
-      // Tenter de récupérer le nom depuis la table clients (SCIM Authentik)
-      const clientRow = await db.query(
-        `SELECT name FROM clients WHERE kounhany_uuid = $1 LIMIT 1`, [uuid]
+
+      // 2. Bridge via clients (scim_id = UUID Authentik/Fleet → email → prestataires)
+      const clientRes = await db.query(
+        `SELECT c.email, c.name FROM clients c
+         WHERE c.scim_id = $1 OR c.client_id = $1 OR c.kounhany_uuid = $1
+         LIMIT 1`,
+        [uuid]
       ).catch(() => ({ rows: [] }));
-      const name = clientRow.rows[0]?.name || nameFallback || `Prestataire-${uuid}`;
-      await prestatairesService.findOrCreate({ garage_uuid: uuid, name, email: null, phone: null });
-      res = await findPrestaByUuid(uuid);
-      if (res.rows.length > 0) console.log(`[Confirm] ✅ Prestataire auto-créé — ${name}`);
-      return res.rows[0] || null;
+
+      if (clientRes.rows.length > 0 && clientRes.rows[0].email) {
+        const { email, name } = clientRes.rows[0];
+        const byEmail = await findPrestaByEmail(email);
+        if (byEmail.rows.length > 0) {
+          console.log(`[Confirm] ✅ Prestataire Kounhany trouvé via clients.email — ${byEmail.rows[0].prestataire_id}`);
+          return byEmail.rows[0];
+        }
+        console.warn(`[Confirm] ⚠️ Client trouvé (${name} / ${email}) mais aucun prestataire Kounhany avec cet email`);
+        return null;
+      }
+
+      console.warn(`[Confirm] ⚠️ Prestataire introuvable pour uuid: ${uuid} (${nameFallback || 'N/A'}) — aucune facture créée`);
+      return null;
     };
 
     // ─── Facture garage ─────────────────────────────────────────────────────────
