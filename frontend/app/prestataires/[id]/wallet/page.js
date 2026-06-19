@@ -186,7 +186,14 @@ export default function PrestaWalletPage({ params }) {
       {view === 'factures' && (
         <WalletInvoices
           clientId={id}
-          fetchFn={(prestataireId) => dolibarrApi.supplierInvoices(prestataireId)}
+          fetchFn={(prestataireId) => {
+            const getPrestaId = (rawId) => {
+              if (rawId.startsWith('garage_')) return rawId.replace('garage_', 'prestataire_');
+              if (rawId.startsWith('provider_')) return rawId.replace('provider_', 'prestataire_');
+              return rawId;
+            };
+            return dolibarrApi.supplierInvoices(getPrestaId(prestataireId));
+          }}
           onCountChange={setInvoicesCount}
         />
       )}
