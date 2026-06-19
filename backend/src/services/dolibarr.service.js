@@ -1,18 +1,5 @@
 const axios = require('axios');
-const { Pool } = require('pg');
 const pool = require('../config/db');
-
-// Pool direct sur la DB Dolibarr (même serveur PG, user wallet a les droits)
-const dolibarrDb = new Pool({
-  host:     process.env.DB_HOST,
-  port:     parseInt(process.env.DB_PORT) || 5432,
-  user:     process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: 'dolibarr_db',
-  max: 3,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-});
 
 const dolibarrApi = axios.create({
   baseURL: `${process.env.DOLIBARR_URL}/api/index.php`,
@@ -403,37 +390,40 @@ const dolibarrService = {
   },
 
   async getSupplierInvoicesByPrestataire(prestataireId) {
-    // Requête directe sur dolibarr_db — bypass l'API REST Dolibarr qui filtre
-    // les factures via un JOIN societe_commerciaux (bug avec droits API partiels)
-    const result = await dolibarrDb.query(
-      `SELECT f.rowid::text                              AS id,
-              f.ref,
-              f.ref_supplier,
-              EXTRACT(EPOCH FROM f.datef)::bigint        AS date,
-              EXTRACT(EPOCH FROM (f.datef + INTERVAL '30 days'))::bigint AS date_echeance,
-              f.total_ht::float,
-              f.total_ht::float                          AS total_ttc,
-              f.fk_statut                                AS statut
-       FROM llx_facture_fourn f
-       JOIN llx_societe s ON f.fk_soc = s.rowid
-       WHERE s.ref_ext = $1
-         AND f.entity = 1
-       ORDER BY f.rowid DESC
-       LIMIT 100`,
-      [prestataireId]
-    );
+    try {
+      // Trouver le socid du fournisseur via ref_ext
+      const supplierRes = await dolibarrApi.get('/thirdparties', {
+        params: { sqlfilters: `(t.ref_ext:=:'${prestataireId}')`, limit: 1 },
+      });
 
-    return result.rows.map(inv => ({
-      id:            inv.id,
-      ref:           inv.ref,
-      ref_supplier:  inv.ref_supplier,
-      date:          inv.date ? Number(inv.date) : null,
-      date_echeance: inv.date_echeance ? Number(inv.date_echeance) : null,
-      total_ht:      parseFloat(inv.total_ht || 0),
-      total_ttc:     parseFloat(inv.total_ttc || 0),
-      status:        inv.statut === 2 ? 'paid' : inv.statut === 1 ? 'unpaid' : 'draft',
-      lines:         [],
-    }));
+      if (!supplierRes.data || supplierRes.data.length === 0) return [];
+      const socid = supplierRes.data[0].id;
+
+      // Récupérer toutes les factures fournisseurs filtrées par socid
+      const res = await dolibarrApi.get('/supplierinvoices', {
+        params: { sortfield: 't.rowid', sortorder: 'DESC', limit: 100 },
+      });
+
+      let invoices = res.data || [];
+      if (!Array.isArray(invoices)) invoices = Object.values(invoices);
+
+      return invoices
+        .filter(inv => inv.socid === String(socid))
+        .map(inv => ({
+          id: inv.id,
+          ref: inv.ref,
+          ref_supplier: inv.ref_supplier,
+          date: inv.date,
+          date_echeance: inv.date_echeance || inv.date_lim_reglement || null,
+          total_ht: parseFloat(inv.total_ht || 0),
+          total_ttc: parseFloat(inv.total_ttc || 0),
+          status: inv.statut === '2' ? 'paid' : inv.statut === '1' ? 'unpaid' : 'draft',
+          lines: inv.lines || [],
+        }));
+    } catch (err) {
+      if (err.response?.status === 404) return [];
+      throw err;
+    }
   },
 };
 

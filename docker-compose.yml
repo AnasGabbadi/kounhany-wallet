@@ -2,32 +2,32 @@ services:
 
   postgres:
     image: postgres:15
-    container_name: kounhany_wallet_postgres
+    container_name: kounhany_postgres
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: kounhany_wallet_db
-      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_DB: kounhany_db
+      POSTGRES_HOST_AUTH_METHOD: md5     
       POSTGRES_INITDB_ARGS: "--auth-host=md5"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/create_blnk_db.sql:/docker-entrypoint-initdb.d/00_create_blnk_db.sql
       - ./database/init.sql:/docker-entrypoint-initdb.d/01_init.sql
     networks:
-      - wallet_network
+      - kounhany_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d kounhany_wallet_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d kounhany_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: kounhany_wallet_redis
+    container_name: kounhany_redis
     restart: always
     networks:
-      - wallet_network
+      - kounhany_network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -36,7 +36,7 @@ services:
 
   blnk:
     image: jerryenebeli/blnk:v0.13.5
-    container_name: kounhany_wallet_blnk
+    container_name: kounhany_blnk
     restart: always
     depends_on:
       postgres:
@@ -50,11 +50,11 @@ services:
       BLNK_PROJECT_NAME: "Kounhany Wallet"
     command: sh -c "blnk migrate up && blnk start"
     networks:
-      - wallet_network
+      - kounhany_network
 
   backend:
     build: ./backend
-    container_name: kounhany_wallet_backend
+    container_name: kounhany_backend
     restart: always
     depends_on:
       postgres:
@@ -68,18 +68,17 @@ services:
     env_file:
       - ./backend/.env
     networks:
-      - wallet_network
-      - idp_network        # ← rejoindre le réseau Authentik
+      - kounhany_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 30s  
 
   frontend:
     build: ./frontend
-    container_name: kounhany_wallet_frontend
+    container_name: kounhany_frontend
     restart: always
     depends_on:
       backend:
@@ -89,14 +88,41 @@ services:
     env_file:
       - ./frontend/.env.local
     networks:
-      - wallet_network
+      - kounhany_network
+
+  dolibarr:
+    image: dolibarr/dolibarr:19.0.3   
+    container_name: kounhany_dolibarr
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8888:80"
+    environment:
+      DOLI_DB_HOST: postgres
+      DOLI_DB_PORT: 5432
+      DOLI_DB_TYPE: pgsql
+      DOLI_DB_USER: ${POSTGRES_USER}
+      DOLI_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DOLI_DB_NAME: dolibarr_db
+      DOLI_ADMIN_LOGIN: ${DOLI_ADMIN_LOGIN}
+      DOLI_ADMIN_PASSWORD: ${DOLI_ADMIN_PASSWORD}
+      DOLI_URL_ROOT: ${DOLI_URL_ROOT}
+      WWW_USER_ID: 33
+      WWW_GROUP_ID: 33
+    volumes:
+      - dolibarr_data:/var/www/html/documents
+      - dolibarr_custom:/var/www/html/custom
+      - ./docker/dolibarr/conf.php:/var/www/html/conf/conf.php
+    networks:
+      - kounhany_network
 
 networks:
-  wallet_network:
+  kounhany_network:
     driver: bridge
-  idp_network:
-    external: true
-    name: kounhany-idp-net   # ← réseau Authentik existant
 
 volumes:
   postgres_data:
+  dolibarr_data:
+  dolibarr_custom:
