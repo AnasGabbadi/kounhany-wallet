@@ -204,74 +204,45 @@ class OrdersService {
     const metadata = o.metadata || {};
     const dolibarrService = require('./dolibarr.service');
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────
-
-    // Cherche un prestataire Kounhany (garage_xxx / provider_xxx) par email
-    const findPrestaByEmail = (email) => db.query(
-      `SELECT * FROM prestataires WHERE email = $1 AND prestataire_id ~ '^(garage|provider)_' LIMIT 1`,
-      [email]
-    );
-
-    // Résout le vrai prestataire Kounhany à partir d'un UUID Fleet/Authentik.
-    // Stratégie : UUID direct → bridge email via clients (scim_id) → email via clients (client_id/kounhany_uuid).
-    // Ne crée JAMAIS de faux prestataire — retourne null si introuvable.
-    const resolvePrestataire = async (uuid, nameFallback) => {
-      // 1. Lookup direct : prestataire_id = 'prestataire_<uuid>' ou garage_uuid = uuid
-      const directRes = await db.query(
-        `SELECT * FROM prestataires WHERE prestataire_id = $1 OR garage_uuid = $2 LIMIT 1`,
-        [`prestataire_${uuid}`, uuid]
-      );
-      if (directRes.rows.length > 0) {
-        const p = directRes.rows[0];
-        // C'est un vrai garage Kounhany
-        if (/^(garage|provider)_/.test(p.prestataire_id)) {
-          console.log(`[Confirm] ℹ️ Prestataire Kounhany trouvé par UUID — ${p.prestataire_id}`);
-          return p;
+    // ─── Facture fournisseur garage — nouveau format prioritaire, ancien en fallback
+    const prestataireId = metadata.wallet_prestataire_id
+      || (metadata.wallet_garage_uuid ? `garage_${metadata.wallet_garage_uuid}` : null);
+    const garageAmount = parseFloat(metadata.wallet_garage_amount || 0);
+    if (prestataireId && garageAmount > 0) {
+      try {
+        const garageUuid = metadata.wallet_garage_uuid || null;
+        // Recherche directe : prestataire_id (nouveau format) OU legacy_uuid (UUID brut Fleet)
+        let presta = await db.query(
+          `SELECT * FROM prestataires
+           WHERE prestataire_id = $1
+              OR (legacy_uuid = $2::uuid AND type = 'GARAGE')
+           LIMIT 1`,
+          [prestataireId, garageUuid]
+        );
+        if (presta.rows.length > 0) {
+          console.log(`[Confirm] ℹ️ Garage trouvé — ${presta.rows[0].prestataire_id}`);
         }
-        // C'est une entrée auto-créée (prestataire_<uuid>) — tenter bridge email
-        if (p.email) {
-          const byEmail = await findPrestaByEmail(p.email);
-          if (byEmail.rows.length > 0) {
-            console.log(`[Confirm] ✅ Prestataire Kounhany trouvé via email (entrée fake→réelle) — ${byEmail.rows[0].prestataire_id}`);
-            return byEmail.rows[0];
+        // Fallback : chercher par kounhany_uuid dans clients (SCIM — UUID Authentik)
+        if (presta.rows.length === 0 && garageUuid) {
+          const fallback = await db.query(
+            `SELECT p.* FROM prestataires p
+             JOIN clients c ON c.client_id = p.prestataire_id
+             WHERE c.kounhany_uuid = $1::uuid AND p.type = 'GARAGE'
+             LIMIT 1`,
+            [garageUuid]
+          );
+          if (fallback.rows.length > 0) {
+            presta = fallback;
+            console.log(`[Confirm] ℹ️ Garage trouvé via kounhany_uuid — ${fallback.rows[0].prestataire_id}`);
+          } else {
+            console.warn(`[Confirm] ⚠️ Garage introuvable — uuid: ${garageUuid} — prestataireId: ${prestataireId}`);
           }
         }
-      }
-
-      // 2. Bridge via clients (scim_id = UUID Authentik/Fleet → email → prestataires)
-      const clientRes = await db.query(
-        `SELECT c.email, c.name FROM clients c
-         WHERE c.scim_id = $1 OR c.client_id = $1 OR c.kounhany_uuid = $1
-         LIMIT 1`,
-        [uuid]
-      ).catch(() => ({ rows: [] }));
-
-      if (clientRes.rows.length > 0 && clientRes.rows[0].email) {
-        const { email, name } = clientRes.rows[0];
-        const byEmail = await findPrestaByEmail(email);
-        if (byEmail.rows.length > 0) {
-          console.log(`[Confirm] ✅ Prestataire Kounhany trouvé via clients.email — ${byEmail.rows[0].prestataire_id}`);
-          return byEmail.rows[0];
-        }
-        console.warn(`[Confirm] ⚠️ Client trouvé (${name} / ${email}) mais aucun prestataire Kounhany avec cet email`);
-        return null;
-      }
-
-      console.warn(`[Confirm] ⚠️ Prestataire introuvable pour uuid: ${uuid} (${nameFallback || 'N/A'}) — aucune facture créée`);
-      return null;
-    };
-
-    // ─── Facture garage ─────────────────────────────────────────────────────────
-    const garageUuid  = metadata.wallet_garage_uuid || null;
-    const garageAmount = parseFloat(metadata.wallet_garage_amount || 0);
-
-    if (garageUuid && garageAmount > 0) {
-      try {
-        const presta = await resolvePrestataire(garageUuid, metadata.wallet_provider_name || null);
-        if (presta) {
+        if (presta.rows.length > 0) {
+          const p = presta.rows[0];
           await dolibarrService.createSupplierInvoice({
-            prestataireId:   presta.prestataire_id,
-            prestataireName: presta.name,
+            prestataireId:   p.prestataire_id,
+            prestataireName: p.name,
             amount:          garageAmount,
             description:     `Service garage — ${o.reference}`,
             reference:       `PRESTA-GARAGE-${o.reference.replace('FLEET-', '')}`,
@@ -280,47 +251,13 @@ class OrdersService {
             `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
              VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
              ON CONFLICT (reference) DO NOTHING`,
-            [presta.prestataire_id, o.reference.replace('FLEET-', ''), garageAmount,
+            [p.prestataire_id, o.reference.replace('FLEET-', ''), garageAmount,
              `GARAGE-${o.reference.replace('FLEET-', '')}`, `Service garage — ${o.reference}`]
           );
-          console.log(`[Confirm] ✅ Facture garage créée — ${presta.name}`);
-        } else {
-          console.warn(`[Confirm] ⚠️ Garage introuvable et non créable — uuid: ${garageUuid}`);
+          console.log(`[Confirm] ✅ Facture garage créée — ${p.name}`);
         }
       } catch (err) {
         console.error('[Confirm] Erreur facture garage:', err.message);
-      }
-    }
-
-    // ─── Facture pièces ─────────────────────────────────────────────────────────
-    // wallet_provider_uuid souvent null côté Fleet → fallback sur garage (qui commande les pièces)
-    const providerUuid  = metadata.wallet_provider_uuid || garageUuid;
-    const piecesAmount  = parseFloat(metadata.wallet_pieces_amount || 0);
-
-    if (providerUuid && piecesAmount > 0) {
-      try {
-        const presta = await resolvePrestataire(providerUuid, metadata.wallet_provider_name || null);
-        if (presta) {
-          await dolibarrService.createSupplierInvoice({
-            prestataireId:   presta.prestataire_id,
-            prestataireName: presta.name,
-            amount:          piecesAmount,
-            description:     `Pièces — ${o.reference}`,
-            reference:       `PRESTA-PIECES-${o.reference.replace('FLEET-', '')}`,
-          });
-          await db.query(
-            `INSERT INTO prestataire_orders (prestataire_id, maintenance_ref, amount, reference, status, description)
-             VALUES ($1, $2, $3, $4, 'CONFIRMED', $5)
-             ON CONFLICT (reference) DO NOTHING`,
-            [presta.prestataire_id, o.reference.replace('FLEET-', ''), piecesAmount,
-             `PIECES-${o.reference.replace('FLEET-', '')}`, `Pièces — ${o.reference}`]
-          );
-          console.log(`[Confirm] ✅ Facture pièces créée — ${presta.name}`);
-        } else {
-          console.warn(`[Confirm] ⚠️ Provider introuvable et non créable — uuid: ${providerUuid}`);
-        }
-      } catch (err) {
-        console.error('[Confirm] Erreur facture pièces:', err.message);
       }
     }
 
