@@ -56,6 +56,18 @@ const prestatairesController = {
     } catch (err) { next(err); }
   },
 
+  // Trouver ou créer un prestataire pièces détachées (company Fleet)
+  async findOrCreatePieces(req, res, next) {
+    try {
+      const { company_uuid } = req.body;
+      if (!company_uuid) {
+        return res.status(400).json({ success: false, message: 'company_uuid est requis' });
+      }
+      const result = await prestatairesService.findOrCreatePieces({ company_uuid });
+      res.status(result.created ? 201 : 200).json({ success: true, data: result });
+    } catch (err) { next(err); }
+  },
+
   // Créer facture fournisseur Dolibarr
   async createSupplierInvoice(req, res, next) {
     try {

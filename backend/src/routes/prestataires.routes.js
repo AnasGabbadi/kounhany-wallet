@@ -168,4 +168,32 @@ router.get('/:id/orders', ctrl.getOrders);
 
 router.post('/supplier-invoice', ctrl.createSupplierInvoice);
 
+/**
+ * @swagger
+ * /prestataires/pieces/find-or-create:
+ *   post:
+ *     summary: Trouver ou créer un wallet prestataire pièces détachées (lié à une company Fleet)
+ *     tags: [Prestataires]
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [company_uuid]
+ *             properties:
+ *               company_uuid:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Prestataire pièces créé
+ *       200:
+ *         description: Prestataire pièces déjà existant
+ *       400:
+ *         description: Requête invalide
+ */
+router.post('/pieces/find-or-create', ctrl.findOrCreatePieces);
+
 module.exports = router;

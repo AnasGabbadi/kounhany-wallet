@@ -75,6 +75,67 @@ const prestatairesService = {
     return { prestataire_id: prestataireId, created: true };
   },
 
+  // ─── FIND OR CREATE PIÈCES ────────────────────────────────────
+  async findOrCreatePieces({ company_uuid }) {
+    const prestataireId = `pieces_${company_uuid}`;
+    const cacheKey = `presta:pieces:${company_uuid}`;
+
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        console.log(`[Prestataire] Cache hit pièces : ${prestataireId}`);
+        return { pieces_prestataire_id: prestataireId, created: false };
+      }
+    } catch (err) {
+      console.warn('[Prestataire] Redis get failed:', err.message);
+    }
+
+    const existing = await pool.query(
+      'SELECT prestataire_id FROM prestataires WHERE prestataire_id = $1',
+      [prestataireId]
+    );
+
+    if (existing.rows.length > 0) {
+      try {
+        await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ pieces_prestataire_id: prestataireId }));
+      } catch (err) {
+        console.warn('[Prestataire] Redis set failed:', err.message);
+      }
+      return { pieces_prestataire_id: prestataireId, created: false };
+    }
+
+    const name = `Pièces détachées — ${company_uuid}`;
+    const ledger = await blnkService.createLedger(prestataireId, name);
+    const [available, blocked, receivable] = await Promise.all([
+      blnkService.createBalance(ledger.ledger_id, 'MAD', 'available', prestataireId),
+      blnkService.createBalance(ledger.ledger_id, 'MAD', 'blocked', prestataireId),
+      blnkService.createBalance(ledger.ledger_id, 'MAD', 'receivable', prestataireId),
+    ]);
+
+    await pool.query(
+      `INSERT INTO prestataires (prestataire_id, garage_uuid, name)
+       VALUES ($1, $2, $3)`,
+      [prestataireId, company_uuid, name]
+    );
+
+    await pool.query(
+      `INSERT INTO prestataire_wallets
+       (prestataire_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [prestataireId, ledger.ledger_id, available.balance_id, blocked.balance_id, receivable.balance_id]
+    );
+
+    try {
+      await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ pieces_prestataire_id: prestataireId }));
+      await redis.del('presta:list');
+    } catch (err) {
+      console.warn('[Prestataire] Redis set failed:', err.message);
+    }
+
+    console.log(`[Prestataire] ✅ Wallet pièces créé (${prestataireId})`);
+    return { pieces_prestataire_id: prestataireId, created: true };
+  },
+
   // ─── LIST ─────────────────────────────────────────────────────
   async list() {
     const cacheKey = 'presta:list';
