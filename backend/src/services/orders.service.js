@@ -207,18 +207,19 @@ class OrdersService {
 
     // Facture fournisseur garage — nouveau format prioritaire, ancien en fallback
     const prestataireId = metadata.wallet_prestataire_id
-      || (metadata.wallet_garage_uuid ? `garage_${metadata.wallet_garage_uuid}` : null);
+      || (metadata.wallet_garage_uuid ? `prestataire_${metadata.wallet_garage_uuid}` : null);
     const garageAmount = parseFloat(metadata.wallet_garage_amount || 0);
 
     if (prestataireId && garageAmount > 0) {
       try {
         const garageUuid = metadata.wallet_garage_uuid || null;
 
-        // Recherche directe : prestataire_id (nouveau format) OU legacy_uuid (UUID brut Fleet)
+        // Recherche : prestataire_id exact OU par garage_uuid (colonne Fleet UUID) OU legacy_uuid
         let presta = await db.query(
           `SELECT * FROM prestataires
            WHERE prestataire_id = $1
-              OR (legacy_uuid = $2::uuid AND type = 'GARAGE')
+              OR (garage_uuid::text = $2 AND type = 'GARAGE')
+              OR (legacy_uuid::text = $2 AND type = 'GARAGE')
            LIMIT 1`,
           [prestataireId, garageUuid]
         );
@@ -231,7 +232,7 @@ class OrdersService {
           const fallback = await db.query(
             `SELECT p.* FROM prestataires p
              JOIN clients c ON c.client_id = p.prestataire_id
-             WHERE c.kounhany_uuid = $1::uuid AND p.type = 'GARAGE'
+             WHERE c.kounhany_uuid = $1 AND p.type = 'GARAGE'
              LIMIT 1`,
             [garageUuid]
           );
@@ -282,18 +283,19 @@ class OrdersService {
 
     // Facture fournisseur pièces — nouveau format prioritaire, ancien en fallback
     const piecesId = metadata.wallet_pieces_prestataire_id
-      || (metadata.wallet_provider_uuid ? `provider_${metadata.wallet_provider_uuid}` : null);
+      || (metadata.wallet_provider_uuid ? `pieces_${metadata.wallet_provider_uuid}` : null);
     const piecesAmount = parseFloat(metadata.wallet_pieces_amount || 0);
 
     if (piecesId && piecesAmount > 0) {
       try {
         const providerUuid = metadata.wallet_provider_uuid || null;
 
-        // Recherche directe : prestataire_id (nouveau format) OU legacy_uuid (UUID brut Fleet)
+        // Recherche : prestataire_id exact OU par garage_uuid (colonne Fleet UUID) OU legacy_uuid
         let presta = await db.query(
           `SELECT * FROM prestataires
            WHERE prestataire_id = $1
-              OR (legacy_uuid = $2::uuid AND type = 'PROVIDER')
+              OR (garage_uuid::text = $2 AND type = 'PROVIDER')
+              OR (legacy_uuid::text = $2 AND type = 'PROVIDER')
            LIMIT 1`,
           [piecesId, providerUuid]
         );
@@ -306,7 +308,7 @@ class OrdersService {
           const fallback = await db.query(
             `SELECT p.* FROM prestataires p
              JOIN clients c ON c.client_id = p.prestataire_id
-             WHERE c.kounhany_uuid = $1::uuid AND p.type = 'PROVIDER'
+             WHERE c.kounhany_uuid = $1 AND p.type = 'PROVIDER'
              LIMIT 1`,
             [providerUuid]
           );

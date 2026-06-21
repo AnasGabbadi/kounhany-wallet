@@ -41,7 +41,8 @@ router.post('/callback', async (req, res) => {
 
     res.json({ success: true, data: tokenData });
   } catch (err) {
-    console.error('[Auth] Erreur complète:', JSON.stringify(err.response?.data));
+    const detail = err.response?.data || err.message || err;
+    console.error('[Auth] Erreur:', JSON.stringify(detail));
     res.status(401).json({ success: false, message: 'Échec authentification' });
   }
 });
