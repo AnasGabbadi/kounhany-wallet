@@ -76,7 +76,7 @@ const prestatairesService = {
   },
 
   // ─── FIND OR CREATE PIÈCES ────────────────────────────────────
-  async findOrCreatePieces({ company_uuid }) {
+  async findOrCreatePieces({ company_uuid, provider_name, company_name }) {
     const prestataireId = `pieces_${company_uuid}`;
     const cacheKey = `presta:pieces:${company_uuid}`;
 
@@ -104,7 +104,7 @@ const prestatairesService = {
       return { pieces_prestataire_id: prestataireId, created: false };
     }
 
-    const name = `Pièces détachées — ${company_uuid}`;
+    const name = provider_name || company_name || `Pièces détachées — ${company_uuid}`;
     const ledger = await blnkService.createLedger(prestataireId, name);
     const [available, blocked, receivable] = await Promise.all([
       blnkService.createBalance(ledger.ledger_id, 'MAD', 'available', prestataireId),

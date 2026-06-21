@@ -245,8 +245,17 @@ const dolibarrService = {
         },
       });
       if (res.data && res.data.length > 0) {
-        console.log(`[Dolibarr] Fournisseur existant — ID: ${res.data[0].id}`);
-        return res.data[0].id;
+        const existing = res.data[0];
+        if (prestataireName && existing.name !== prestataireName) {
+          try {
+            await dolibarrApi.put(`/thirdparties/${existing.id}`, { name: prestataireName });
+            console.log(`[Dolibarr] Nom fournisseur mis à jour: ${existing.name} → ${prestataireName}`);
+          } catch (e) {
+            console.warn('[Dolibarr] PUT nom update failed:', e.message);
+          }
+        }
+        console.log(`[Dolibarr] Fournisseur existant — ID: ${existing.id}`);
+        return existing.id;
       }
     } catch (err) {
       console.warn(`[Dolibarr] GET /thirdparties failed (${err.response?.status}):`, err.response?.data ?? err.message);
@@ -401,14 +410,13 @@ const dolibarrService = {
 
       // Récupérer toutes les factures fournisseurs filtrées par socid
       const res = await dolibarrApi.get('/supplierinvoices', {
-        params: { sortfield: 't.rowid', sortorder: 'DESC', limit: 100 },
+        params: { sortfield: 't.rowid', sortorder: 'DESC', limit: 100, thirdparty_ids: socid },
       });
 
       let invoices = res.data || [];
       if (!Array.isArray(invoices)) invoices = Object.values(invoices);
 
       return invoices
-        .filter(inv => inv.socid === String(socid))
         .map(inv => ({
           id: inv.id,
           ref: inv.ref,
