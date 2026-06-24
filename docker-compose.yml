@@ -90,39 +90,11 @@ services:
     networks:
       - kounhany_network
 
-  dolibarr:
-    image: dolibarr/dolibarr:19.0.3   
-    container_name: kounhany_dolibarr
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "8888:80"
-    environment:
-      DOLI_DB_HOST: postgres
-      DOLI_DB_PORT: 5432
-      DOLI_DB_TYPE: pgsql
-      DOLI_DB_USER: ${POSTGRES_USER}
-      DOLI_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DOLI_DB_NAME: dolibarr_db
-      DOLI_ADMIN_LOGIN: ${DOLI_ADMIN_LOGIN}
-      DOLI_ADMIN_PASSWORD: ${DOLI_ADMIN_PASSWORD}
-      DOLI_URL_ROOT: ${DOLI_URL_ROOT}
-      WWW_USER_ID: 33
-      WWW_GROUP_ID: 33
-    volumes:
-      - dolibarr_data:/var/www/html/documents
-      - dolibarr_custom:/var/www/html/custom
-      - ./docker/dolibarr/conf.php:/var/www/html/conf/conf.php
-    networks:
-      - kounhany_network
 
 networks:
   kounhany_network:
     driver: bridge
+    name: wallet_kounhany_network
 
 volumes:
   postgres_data:
-  dolibarr_data:
-  dolibarr_custom:

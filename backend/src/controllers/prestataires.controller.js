@@ -59,11 +59,11 @@ const prestatairesController = {
   // Trouver ou créer un prestataire pièces détachées (company Fleet)
   async findOrCreatePieces(req, res, next) {
     try {
-      const { company_uuid } = req.body;
+      const { company_uuid, provider_name, company_name } = req.body;
       if (!company_uuid) {
         return res.status(400).json({ success: false, message: 'company_uuid est requis' });
       }
-      const result = await prestatairesService.findOrCreatePieces({ company_uuid });
+      const result = await prestatairesService.findOrCreatePieces({ company_uuid, provider_name, company_name });
       res.status(result.created ? 201 : 200).json({ success: true, data: result });
     } catch (err) { next(err); }
   },

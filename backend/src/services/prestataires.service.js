@@ -26,12 +26,28 @@ const prestatairesService = {
 
     // 2. Check DB
     const existing = await pool.query(
-      'SELECT prestataire_id FROM prestataires WHERE prestataire_id = $1',
+      'SELECT prestataire_id, name FROM prestataires WHERE prestataire_id = $1',
       [prestataireId]
     );
 
     if (existing.rows.length > 0) {
-      // Mettre en cache pour les prochains appels
+      const existingName = existing.rows[0].name;
+      const isGeneric = !existingName || existingName.startsWith('Prestataire-') || existingName === 'Garage Fleet';
+      const isRealName = name && !name.startsWith('Prestataire-') && name !== 'Garage Fleet';
+
+      if (isGeneric && isRealName) {
+        try {
+          await pool.query(
+            'UPDATE prestataires SET name = $1, updated_at = NOW() WHERE prestataire_id = $2',
+            [name, prestataireId]
+          );
+          await redis.del(cacheKey).catch(() => {});
+          console.log(`[Prestataire] Nom mis à jour: "${existingName}" → "${name}" (${prestataireId})`);
+        } catch (err) {
+          console.warn('[Prestataire] Erreur mise à jour nom:', err.message);
+        }
+      }
+
       try {
         await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ prestataire_id: prestataireId }));
       } catch (err) {
@@ -76,7 +92,7 @@ const prestatairesService = {
   },
 
   // ─── FIND OR CREATE PIÈCES ────────────────────────────────────
-  async findOrCreatePieces({ company_uuid }) {
+  async findOrCreatePieces({ company_uuid, provider_name, company_name }) {
     const prestataireId = `pieces_${company_uuid}`;
     const cacheKey = `presta:pieces:${company_uuid}`;
 
@@ -91,11 +107,30 @@ const prestatairesService = {
     }
 
     const existing = await pool.query(
-      'SELECT prestataire_id FROM prestataires WHERE prestataire_id = $1',
+      'SELECT prestataire_id, name FROM prestataires WHERE prestataire_id = $1',
       [prestataireId]
     );
 
+    const name = provider_name || company_name || `Pièces détachées — ${company_uuid}`;
+
     if (existing.rows.length > 0) {
+      const existingName = existing.rows[0].name;
+      const isGeneric = !existingName || existingName.startsWith('Pièces détachées — ');
+      const isRealName = name && !name.startsWith('Pièces détachées — ');
+
+      if (isGeneric && isRealName) {
+        try {
+          await pool.query(
+            'UPDATE prestataires SET name = $1, updated_at = NOW() WHERE prestataire_id = $2',
+            [name, prestataireId]
+          );
+          await redis.del(cacheKey).catch(() => {});
+          console.log(`[Prestataire] Nom pièces mis à jour: "${existingName}" → "${name}" (${prestataireId})`);
+        } catch (err) {
+          console.warn('[Prestataire] Erreur mise à jour nom pièces:', err.message);
+        }
+      }
+
       try {
         await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ pieces_prestataire_id: prestataireId }));
       } catch (err) {
@@ -103,8 +138,6 @@ const prestatairesService = {
       }
       return { pieces_prestataire_id: prestataireId, created: false };
     }
-
-    const name = `Pièces détachées — ${company_uuid}`;
     const ledger = await blnkService.createLedger(prestataireId, name);
     const [available, blocked, receivable] = await Promise.all([
       blnkService.createBalance(ledger.ledger_id, 'MAD', 'available', prestataireId),
