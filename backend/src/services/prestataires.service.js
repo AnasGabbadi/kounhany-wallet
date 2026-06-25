@@ -24,13 +24,20 @@ const prestatairesService = {
       console.warn('[Prestataire] Redis get failed:', err.message);
     }
 
-    // 2. Check DB
+    // 2. Check DB — multi-champs pour éviter les doublons
+    // Cherche par: prestataire_id exact, prefix garage_, colonne garage_uuid, colonne legacy_uuid
     const existing = await pool.query(
-      'SELECT prestataire_id, name FROM prestataires WHERE prestataire_id = $1',
-      [prestataireId]
+      `SELECT prestataire_id, name FROM prestataires
+       WHERE prestataire_id = $1
+          OR prestataire_id = $2
+          OR (garage_uuid::text = $3 AND type = 'GARAGE')
+          OR (legacy_uuid::text = $3 AND type = 'GARAGE')
+       LIMIT 1`,
+      [prestataireId, `garage_${garage_uuid}`, garage_uuid]
     );
 
     if (existing.rows.length > 0) {
+      const foundId = existing.rows[0].prestataire_id;
       const existingName = existing.rows[0].name;
       const isGeneric = !existingName || existingName.startsWith('Prestataire-') || existingName === 'Garage Fleet';
       const isRealName = name && !name.startsWith('Prestataire-') && name !== 'Garage Fleet';
@@ -39,21 +46,25 @@ const prestatairesService = {
         try {
           await pool.query(
             'UPDATE prestataires SET name = $1, updated_at = NOW() WHERE prestataire_id = $2',
-            [name, prestataireId]
+            [name, foundId]
           );
           await redis.del(cacheKey).catch(() => {});
-          console.log(`[Prestataire] Nom mis à jour: "${existingName}" → "${name}" (${prestataireId})`);
+          console.log(`[Prestataire] Nom mis à jour: "${existingName}" → "${name}" (${foundId})`);
         } catch (err) {
           console.warn('[Prestataire] Erreur mise à jour nom:', err.message);
         }
       }
 
+      if (foundId !== prestataireId) {
+        console.log(`[Prestataire] Doublon évité : ${prestataireId} → réutilise ${foundId}`);
+      }
+
       try {
-        await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ prestataire_id: prestataireId }));
+        await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ prestataire_id: foundId }));
       } catch (err) {
         console.warn('[Prestataire] Redis set failed:', err.message);
       }
-      return { prestataire_id: prestataireId, created: false };
+      return { prestataire_id: foundId, created: false };
     }
 
     // 3. Créer wallets Blnk

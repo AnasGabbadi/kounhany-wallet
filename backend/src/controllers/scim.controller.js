@@ -241,14 +241,20 @@ const scimController = {
 
             // Créer wallet prestataire si garage ou provider
             if (isPrestataire) {
+                const scimEntityUuid = clientId.match(/^(?:garage|provider|b2c)_([0-9a-f-]{36})$/i)?.[1] || null;
                 const existingPresta = await pool.query(
-                    'SELECT * FROM prestataires WHERE prestataire_id = $1', [clientId]
+                    `SELECT prestataire_id FROM prestataires
+                     WHERE prestataire_id = $1
+                        OR (garage_uuid::text = $2 AND type = $3)
+                        OR (legacy_uuid::text = $2 AND type = $3)
+                     LIMIT 1`,
+                    [clientId, scimEntityUuid, prestataireType]
                 );
                 if (existingPresta.rows.length === 0) {
                     await pool.query(
-                        `INSERT INTO prestataires (prestataire_id, name, email, type)
-                     VALUES ($1, $2, $3, $4)`,
-                        [clientId, displayName, email, prestataireType]
+                        `INSERT INTO prestataires (prestataire_id, garage_uuid, name, email, type)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                        [clientId, scimEntityUuid, displayName, email, prestataireType]
                     );
                 }
 
@@ -783,14 +789,20 @@ const scimController = {
                     }
 
                     // Insérer dans prestataires si pas déjà là
+                    const garageKounhanyUuid = client.kounhany_uuid || null;
                     const existingPresta = await pool.query(
-                        'SELECT * FROM prestataires WHERE prestataire_id = $1', [clientId]
+                        `SELECT prestataire_id FROM prestataires
+                         WHERE prestataire_id = $1
+                            OR (garage_uuid::text = $2 AND type = 'GARAGE')
+                            OR (legacy_uuid::text = $2 AND type = 'GARAGE')
+                         LIMIT 1`,
+                        [clientId, garageKounhanyUuid]
                     );
                     if (existingPresta.rows.length === 0) {
                         await pool.query(
-                            `INSERT INTO prestataires (prestataire_id, name, email, phone, type)
-                            VALUES ($1, $2, $3, $4, 'GARAGE')`,
-                            [clientId, client.name, client.email, client.phone]
+                            `INSERT INTO prestataires (prestataire_id, garage_uuid, name, email, phone, type)
+                            VALUES ($1, $2, $3, $4, $5, 'GARAGE')`,
+                            [clientId, garageKounhanyUuid, client.name, client.email, client.phone]
                         );
                     }
 
@@ -864,14 +876,20 @@ const scimController = {
                         }
                     }
 
+                    const providerKounhanyUuid = client.kounhany_uuid || null;
                     const existingPresta = await pool.query(
-                        'SELECT * FROM prestataires WHERE prestataire_id = $1', [clientId]
+                        `SELECT prestataire_id FROM prestataires
+                         WHERE prestataire_id = $1
+                            OR (garage_uuid::text = $2 AND type = 'PROVIDER')
+                            OR (legacy_uuid::text = $2 AND type = 'PROVIDER')
+                         LIMIT 1`,
+                        [clientId, providerKounhanyUuid]
                     );
                     if (existingPresta.rows.length === 0) {
                         await pool.query(
-                            `INSERT INTO prestataires (prestataire_id, name, email, phone, type)
-                            VALUES ($1, $2, $3, $4, 'PROVIDER')`,
-                            [clientId, client.name, client.email, client.phone]
+                            `INSERT INTO prestataires (prestataire_id, garage_uuid, name, email, phone, type)
+                            VALUES ($1, $2, $3, $4, $5, 'PROVIDER')`,
+                            [clientId, providerKounhanyUuid, client.name, client.email, client.phone]
                         );
                     }
 
