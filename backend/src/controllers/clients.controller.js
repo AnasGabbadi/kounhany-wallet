@@ -165,6 +165,59 @@ const clientsController = {
     } catch (err) { next(err); }
   },
 
+  async findOrCreate(req, res, next) {
+    try {
+      const { client_id, name } = req.body;
+      if (!client_id || !name) {
+        return res.status(400).json({ success: false, message: 'client_id et name sont requis' });
+      }
+
+      // Client + wallet déjà créés → idempotent return
+      const existing = await pool.query(
+        `SELECT c.client_id, cw.available_balance_id
+         FROM clients c
+         LEFT JOIN client_wallets cw ON cw.client_id = c.client_id
+         WHERE c.client_id = $1`,
+        [client_id]
+      );
+
+      if (existing.rows.length > 0 && existing.rows[0].available_balance_id) {
+        console.log(`[Client] findOrCreate: ${client_id} found`);
+        return res.json({ success: true, data: { client_id, found: true, created: false } });
+      }
+
+      // Créer la ligne client si elle n'existe pas encore
+      if (existing.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO clients (client_id, name, client_type)
+           VALUES ($1, $2, 'LOGISTIQUE')
+           ON CONFLICT (client_id) DO NOTHING`,
+          [client_id, name]
+        );
+      }
+
+      // Créer ledger Blnk + 3 comptes
+      const ledger = await blnkService.createLedger(client_id, name);
+      const ledgerId = ledger.ledger_id;
+      const [available, blocked, receivable] = await Promise.all([
+        blnkService.createBalance(ledgerId, 'MAD', 'available', client_id),
+        blnkService.createBalance(ledgerId, 'MAD', 'blocked', client_id),
+        blnkService.createBalance(ledgerId, 'MAD', 'receivable', client_id),
+      ]);
+
+      await pool.query(
+        `INSERT INTO client_wallets
+         (client_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (client_id) DO NOTHING`,
+        [client_id, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+      );
+
+      console.log(`[Client] findOrCreate: ${client_id} created`);
+      return res.status(201).json({ success: true, data: { client_id, found: false, created: true } });
+    } catch (err) { next(err); }
+  },
+
   async createOrGetB2C(req, res, next) {
     try {
       const { email, name, kounhany_uuid } = req.body;

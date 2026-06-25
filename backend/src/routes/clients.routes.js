@@ -69,6 +69,8 @@ router.get('/', clientsController.list);
  */
 router.post('/b2c', clientsController.createOrGetB2C);
 
+router.post('/find-or-create', clientsController.findOrCreate);
+
 router.get('/:clientId', clientsController.getOne);
 
 /**
