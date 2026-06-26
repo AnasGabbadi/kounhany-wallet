@@ -28,14 +28,13 @@ const logistiqueBilling = {
       JOIN clients c ON o.client_id = c.client_id
       WHERE o.order_type = 'LOGISTIQUE'
         AND o.status = 'CONFIRMED'
-        AND EXTRACT(MONTH FROM o.created_at) = $1
-        AND EXTRACT(YEAR FROM o.created_at) = $2
+        AND EXTRACT(MONTH FROM o.confirmed_at) = $1
+        AND EXTRACT(YEAR FROM o.confirmed_at) = $2
       ORDER BY o.client_id, o.created_at
     `, [month, year]);
 
     if (ordersResult.rows.length === 0) {
       console.log('[Logistique Billing] Aucune commande LOGISTIQUE CONFIRMED ce mois.');
-      return;
     }
 
     // Grouper par client
@@ -59,6 +58,17 @@ const logistiqueBilling = {
         const reference = `LOG-${year}${String(month).padStart(2, '0')}-${clientData.clientId.slice(-8)}`;
         const description = `Missions logistique — ${String(month).padStart(2, '0')}/${year} (${clientData.orders.length} mission${clientData.orders.length > 1 ? 's' : ''})`;
 
+        // Idempotence — skip si facture déjà créée dans Dolibarr
+        try {
+          const existing = await dolibarrService.findInvoiceByClientRef(reference);
+          if (existing) {
+            console.log(`[Logistique Billing] Facture client déjà existante — skip : ${reference}`);
+            continue;
+          }
+        } catch (err) {
+          console.warn(`[Logistique Billing] Erreur vérification idempotence: ${err.message.slice(0, 200)}`);
+        }
+
         await dolibarrService.createInvoice({
           clientId: clientData.clientId,
           clientName: clientData.clientName,
@@ -79,6 +89,82 @@ const logistiqueBilling = {
         console.log(`[Logistique Billing] ✅ Facture créée pour ${clientData.clientName} — ${clientData.total} MAD (${clientData.orders.length} missions)`);
       } catch (err) {
         console.error(`[Logistique Billing] ❌ Erreur client ${clientData.clientId}:`, err.message);
+      }
+    }
+
+    // ─── Facturation prestataires LOGISTIQUE ─────────────────────────
+    const period = `${year}-${String(month).padStart(2, '0')}`;
+    const prestaOrdersResult = await pool.query(`
+      SELECT
+        prestataire_id,
+        SUM(amount)::numeric as total,
+        array_agg(id) as order_ids
+      FROM prestataire_orders
+      WHERE reference LIKE 'HANY-PRESTA-%'
+        AND status = 'CONFIRMED'
+        AND EXTRACT(MONTH FROM created_at) = $1
+        AND EXTRACT(YEAR FROM created_at) = $2
+      GROUP BY prestataire_id
+    `, [month, year]);
+
+    if (prestaOrdersResult.rows.length > 0) {
+      console.log(`[Logistique Billing] ${prestaOrdersResult.rows.length} prestataire(s) à facturer`);
+
+      for (const row of prestaOrdersResult.rows) {
+        try {
+          const prestaRef = `HANY-PRESTA-${row.prestataire_id}-${period}`;
+
+          // Idempotence — vérifier si déjà facturé ce mois
+          const existingBilling = await pool.query(
+            `SELECT id FROM prestataire_orders WHERE reference = $1 AND status = 'INVOICED' LIMIT 1`,
+            [prestaRef]
+          );
+          if (existingBilling.rows.length > 0) {
+            console.log(`[Logistique Billing] Facture prestataire déjà existante — skip : ${prestaRef}`);
+            continue;
+          }
+
+          // Récupérer le nom du prestataire
+          const prestaNameResult = await pool.query(
+            'SELECT name FROM prestataires WHERE prestataire_id = $1',
+            [row.prestataire_id]
+          );
+          const prestaName = prestaNameResult.rows[0]?.name || row.prestataire_id;
+
+          const invoiceId = await dolibarrService.createSupplierInvoice({
+            prestataireId: row.prestataire_id,
+            prestataireName: prestaName,
+            amount: parseFloat(row.total),
+            reference: prestaRef,
+            description: `Prestation logistique ${period}`,
+          });
+
+          // Marquer les orders individuels comme INVOICED
+          await pool.query(
+            `UPDATE prestataire_orders SET status = 'INVOICED', updated_at = NOW() WHERE id = ANY($1)`,
+            [row.order_ids]
+          );
+
+          // Ligne de synthèse — utilisée par le sync Dolibarr pour le paiement prestataire
+          await pool.query(
+            `INSERT INTO prestataire_orders
+             (prestataire_id, maintenance_ref, amount, reference, status, description, dolibarr_invoice_id)
+             VALUES ($1, $2, $3, $4, 'INVOICED', $5, $6)
+             ON CONFLICT (reference) DO NOTHING`,
+            [
+              row.prestataire_id,
+              prestaRef,
+              parseFloat(row.total),
+              prestaRef,
+              `Prestation logistique ${period}`,
+              invoiceId,
+            ]
+          );
+
+          console.log(`[Logistique Billing] ✅ Facture prestataire ${row.prestataire_id} — ${parseFloat(row.total)} MAD`);
+        } catch (err) {
+          console.error(`[Logistique Billing] ❌ Erreur prestataire ${row.prestataire_id}: ${err.message.slice(0, 200)}`);
+        }
       }
     }
 

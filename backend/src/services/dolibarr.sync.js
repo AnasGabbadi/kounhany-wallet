@@ -208,7 +208,7 @@ const dolibarrSync = {
             // ─── CAS PRESTATAIRE LOGISTIQUE HANYJAY (HANY-PRESTA-) ──────────
             if (invoice.ref_supplier?.startsWith('HANY-PRESTA-')) {
               const orderResult = await pool.query(
-                `SELECT * FROM prestataire_orders WHERE reference = $1 AND status = 'CONFIRMED'`,
+                `SELECT * FROM prestataire_orders WHERE reference = $1 AND status = 'INVOICED'`,
                 [invoice.ref_supplier]
               );
 
