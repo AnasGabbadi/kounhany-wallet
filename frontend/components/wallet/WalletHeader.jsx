@@ -1,13 +1,13 @@
 'use client';
-import { Box, Typography, Button, Chip } from '@mui/material';
+import { Box, Typography, Button } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
-export default function WalletHeader({ client, wallet, clientId, router }) {
+export default function WalletHeader({ client, wallet, clientId, router, backPath }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
       <Button
         startIcon={<ArrowBackIcon />}
-        onClick={() => router.push(`/clients/organisations`)}
+        onClick={() => router.push(backPath ?? '/clients/organisations')}
         sx={{ color: 'text.secondary', flexShrink: 0 }}
       >
         Retour

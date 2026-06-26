@@ -17,40 +17,67 @@ import CoPresentIcon from '@mui/icons-material/CoPresent';
 import GarageIcon from '@mui/icons-material/Garage';
 import BuildIcon from '@mui/icons-material/Build';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { authService } from '@/lib/auth';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
 const DRAWER_WIDTH = 260;
+
+// Whitelist: valeurs ?from= → chemin sidebar enfant.
+// Jamais de redirect vers une URL arbitraire.
+const SECTION_FROM_MAP = {
+  flottes:       '/clients/organisations',
+  particuliers:  '/clients/b2c',
+  logistique:    '/clients/logistique',
+  garages:       '/prestataires/garages',
+  pieces:        '/prestataires/pieces',
+  transporteurs: '/prestataires/transporteurs',
+};
 
 const MENU_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   {
     label: 'Clients', icon: <PeopleIcon />, path: '/clients',
     children: [
-      { label: 'Flottes', icon: <BusinessIcon />, path: '/clients/organisations' },
-      { label: 'Particuliers', icon: <PersonIcon />, path: '/clients/b2c' },
-      { label: 'Logistique', icon: <LocalShippingIcon />, path: '/clients/logistique' },
+      { label: 'Flottes',      icon: <BusinessIcon />,      path: '/clients/organisations' },
+      { label: 'Particuliers', icon: <PersonIcon />,        path: '/clients/b2c' },
+      { label: 'Logistique',   icon: <LocalShippingIcon />, path: '/clients/logistique' },
     ],
   },
   {
     label: 'Prestataires', icon: <CoPresentIcon />, path: '/prestataires',
     children: [
-      { label: 'Garages', icon: <GarageIcon />, path: '/prestataires/garages' },
-      { label: 'Fournisseurs', icon: <BuildIcon />, path: '/prestataires/pieces' },
+      { label: 'Garages',       icon: <GarageIcon />,        path: '/prestataires/garages' },
+      { label: 'Fournisseurs',  icon: <BuildIcon />,         path: '/prestataires/pieces' },
       { label: 'Transporteurs', icon: <LocalShippingIcon />, path: '/prestataires/transporteurs' },
     ],
   },
-  { label: 'Commandes', icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
-  { label: 'Transactions', icon: <ReceiptIcon />, path: '/transactions' },
+  { label: 'Commandes',     icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
+  { label: 'Transactions',  icon: <ReceiptIcon />,             path: '/transactions' },
 ];
 
-function MenuItem({ item, pathname, router }) {
+function MenuItem({ item, pathname, router, fromParam }) {
   const hasChildren = !!item.children;
-  const isActive = pathname === item.path ||
-    (hasChildren && item.children.some(c => pathname === c.path)) ||
-    (hasChildren && item.children.some(c => pathname.startsWith(c.path + '/')));
+
+  // Chemin de retour résolu depuis ?from= (whitelist uniquement)
+  const fromPath = (fromParam && SECTION_FROM_MAP[fromParam]) || null;
+
+  const isActive =
+    pathname === item.path ||
+    // parent section active quand on est sur une sous-page (ex: /clients/xxx/wallet)
+    (item.path !== '/' && pathname.startsWith(item.path + '/')) ||
+    (hasChildren && item.children.some(c =>
+      pathname === c.path ||
+      pathname.startsWith(c.path + '/') ||
+      fromPath === c.path
+    ));
+
   const [open, setOpen] = useState(isActive);
+
+  // Ré-ouvrir la section quand on revient dedans via navigation
+  useEffect(() => {
+    if (isActive) setOpen(true);
+  }, [isActive]);
 
   const active = pathname === item.path && !hasChildren;
 
@@ -104,8 +131,10 @@ function MenuItem({ item, pathname, router }) {
         <Collapse in={open} timeout="auto" unmountOnExit>
           <List disablePadding sx={{ pl: 2, mb: 0.5 }}>
             {item.children.map((child) => {
-              const childActive = pathname === child.path ||
-                pathname.startsWith(child.path + '/');
+              const childActive =
+                pathname === child.path ||
+                pathname.startsWith(child.path + '/') ||
+                fromPath === child.path;
               return (
                 <ListItem key={child.path} disablePadding sx={{ mb: 0.5 }}>
                   <ListItemButton
@@ -143,6 +172,31 @@ function MenuItem({ item, pathname, router }) {
         </Collapse>
       )}
     </>
+  );
+}
+
+// Composant interne isolé dans Suspense pour lire useSearchParams
+function SidebarMenu({ pathname, router }) {
+  const searchParams = useSearchParams();
+  const fromParam = searchParams.get('from');
+
+  return (
+    <List sx={{ px: 1.5, pt: 2, flex: 1 }}>
+      {MENU_ITEMS.map((item) => (
+        <MenuItem key={item.path} item={item} pathname={pathname} router={router} fromParam={fromParam} />
+      ))}
+    </List>
+  );
+}
+
+// Fallback sans fromParam (identique à l'état initial)
+function SidebarMenuFallback({ pathname, router }) {
+  return (
+    <List sx={{ px: 1.5, pt: 2, flex: 1 }}>
+      {MENU_ITEMS.map((item) => (
+        <MenuItem key={item.path} item={item} pathname={pathname} router={router} fromParam={null} />
+      ))}
+    </List>
   );
 }
 
@@ -203,12 +257,10 @@ export default function Sidebar({ open }) {
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mx: 2 }} />
 
-      {/* Menu */}
-      <List sx={{ px: 1.5, pt: 2, flex: 1 }}>
-        {MENU_ITEMS.map((item) => (
-          <MenuItem key={item.path} item={item} pathname={pathname} router={router} />
-        ))}
-      </List>
+      {/* Menu — SidebarMenu utilise useSearchParams, isolé dans Suspense */}
+      <Suspense fallback={<SidebarMenuFallback pathname={pathname} router={router} />}>
+        <SidebarMenu pathname={pathname} router={router} />
+      </Suspense>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mx: 2 }} />
 

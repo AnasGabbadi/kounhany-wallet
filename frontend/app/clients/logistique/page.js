@@ -86,7 +86,7 @@ export default function LogistiquePage() {
               scores={scores}
               scoresLoading={scoresLoading}
               onDetail={(client) => setSelectedClient(client)}
-              onWallet={(id) => router.push(`/clients/${id}/wallet`)}
+              onWallet={(id) => router.push(`/clients/${id}/wallet?from=logistique`)}
               onOrders={(id) => router.push(`/clients/${id}/orders`)}
               showContact={false}
             />

@@ -84,7 +84,7 @@ export default function OrganisationsPage() {
               scores={scores}
               scoresLoading={scoresLoading}
               onDetail={(client) => router.push(`/clients/${client.client_id}`)}
-              onWallet={(id) => router.push(`/clients/${id}/wallet`)}
+              onWallet={(id) => router.push(`/clients/${id}/wallet?from=flottes`)}
               onOrders={(id) => router.push(`/clients/${id}/orders`)}
               showContact={false}
             />

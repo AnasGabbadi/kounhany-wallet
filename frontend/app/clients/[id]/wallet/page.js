@@ -7,7 +7,14 @@ import {
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+// Whitelist des origines autorisées — jamais de redirect vers une URL arbitraire
+const ALLOWED_BACK_ROUTES = {
+  flottes:      '/clients/organisations',
+  particuliers: '/clients/b2c',
+  logistique:   '/clients/logistique',
+};
 import { clientsApi, walletApi } from '@/lib/api';
 import WalletHeader from '@/components/wallet/WalletHeader';
 import AccountCards from '@/components/wallet/AccountCards';
@@ -21,6 +28,8 @@ import WalletScoring from '@/components/wallet/WalletScoring';
 export default function WalletPage({ params }) {
   const { id: clientId } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const backPath = ALLOWED_BACK_ROUTES[searchParams.get('from')] ?? '/clients/organisations';
 
   const [client, setClient] = useState(null);
   const [walletData, setWalletData] = useState(null);
@@ -114,7 +123,7 @@ export default function WalletPage({ params }) {
     <Box>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <WalletHeader client={client} wallet={wallet} clientId={clientId} router={router} />
+        <WalletHeader client={client} wallet={wallet} clientId={clientId} router={router} backPath={backPath} />
 
         {/* Toggle switch comme Dashboard */}
         <ToggleButtonGroup
