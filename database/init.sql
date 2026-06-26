@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS prestataires (
   email VARCHAR(255),
   phone VARCHAR(50),
   type VARCHAR(20) DEFAULT 'GARAGE'
-    CHECK (type IN ('GARAGE', 'PROVIDER')),       -- GARAGE ou PROVIDER
+    CHECK (type IN ('GARAGE', 'PROVIDER', 'TRANSPORTEUR')),       -- GARAGE ou PROVIDER
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -143,7 +143,7 @@ CREATE INDEX IF NOT EXISTS idx_prestataire_orders_status ON prestataire_orders(s
 -- ─── MIGRATIONS PRESTATAIRES (sur DB existante) ───────────────
 ALTER TABLE prestataires ALTER COLUMN garage_uuid DROP NOT NULL;
 ALTER TABLE prestataires ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'GARAGE'
-  CHECK (type IN ('GARAGE', 'PROVIDER'));
+  CHECK (type IN ('GARAGE', 'PROVIDER', 'TRANSPORTEUR'));
 
 -- ─── SCIM GROUP CACHE ─────────────────────────────────────────
 -- Mapping groupId (Authentik) → displayName, persisté pour survivre aux restarts
