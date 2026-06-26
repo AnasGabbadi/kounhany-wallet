@@ -90,6 +90,52 @@ const dolibarrSync = {
             continue;
           }
 
+          // ─── CAS LOGISTIQUE HANYJAY (HANY-CLIENT-{client_id}-{YYYY-MM}) ──
+          if (invoice.ref_client.startsWith('HANY-CLIENT-')) {
+            try {
+              const orderResult = await pool.query(
+                `SELECT * FROM orders
+                 WHERE reference = $1
+                   AND status != 'PAID'
+                   AND order_type = 'LOGISTIQUE'
+                 LIMIT 1`,
+                [invoice.ref_client]
+              );
+
+              if (orderResult.rows.length === 0) {
+                console.log(`[Dolibarr Sync Logistique] Order introuvable : ${invoice.ref_client}`);
+                continue;
+              }
+
+              const o = orderResult.rows[0];
+              const amount = parseFloat(invoice.total_ttc);
+
+              await walletService.externalDebt(
+                o.client_id,
+                amount,
+                `DEBT-${ref}`,
+                `Solde créance Logistique — ${invoice.ref_client}`
+              );
+
+              await walletService.pay(
+                o.client_id,
+                amount,
+                ref,
+                `Paiement Dolibarr Logistique — ${invoice.ref_client}`
+              );
+
+              await pool.query(
+                `UPDATE orders SET status = 'PAID', updated_at = NOW() WHERE id = $1`,
+                [o.id]
+              );
+
+              console.log(`[Dolibarr Sync Logistique] Paiement reçu client:${o.client_id} montant:${amount}`);
+            } catch (err) {
+              console.error(`[Dolibarr Sync Logistique] ❌ Erreur ${invoice.ref_client}: ${err.message.slice(0, 200)}`);
+            }
+            continue;
+          }
+
           // ─── CAS FLEET ────────────────────────────────────────────
           const orderRef = invoice.ref_client
             .replace(/^CONFIRM-FLEET-/, 'FLEET-')
@@ -156,6 +202,46 @@ const dolibarrSync = {
             );
             if (existing.rows.length > 0) {
               skippedIdempotency++;
+              continue;
+            }
+
+            // ─── CAS PRESTATAIRE LOGISTIQUE HANYJAY (HANY-PRESTA-) ──────────
+            if (invoice.ref_supplier?.startsWith('HANY-PRESTA-')) {
+              const orderResult = await pool.query(
+                `SELECT * FROM prestataire_orders WHERE reference = $1 AND status = 'CONFIRMED'`,
+                [invoice.ref_supplier]
+              );
+
+              if (orderResult.rows.length === 0) {
+                const anyOrder = await pool.query(
+                  `SELECT reference, status FROM prestataire_orders WHERE reference = $1`,
+                  [invoice.ref_supplier]
+                );
+                if (anyOrder.rows.length > 0) {
+                  console.log(`[Dolibarr Sync Logistique] Order prestataire statut=${anyOrder.rows[0].status} (skip) : ${invoice.ref_supplier}`);
+                } else {
+                  console.log(`[Dolibarr Sync Logistique] Order prestataire introuvable : ${invoice.ref_supplier}`);
+                }
+                skippedNotFound++;
+                continue;
+              }
+
+              const o = orderResult.rows[0];
+
+              await prestatairesService.pay(
+                o.prestataire_id,
+                parseFloat(invoice.total_ttc),
+                ref,
+                `Paiement Dolibarr prestataire Logistique`
+              );
+
+              await pool.query(
+                `UPDATE prestataire_orders SET status = 'PAID', updated_at = NOW() WHERE id = $1`,
+                [o.id]
+              );
+
+              console.log(`[Dolibarr Sync Logistique] Paiement prestataire:${o.prestataire_id} montant:${invoice.total_ttc}`);
+              paid++;
               continue;
             }
 

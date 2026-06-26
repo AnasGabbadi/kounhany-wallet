@@ -53,6 +53,14 @@ router.post('/logistique/monthly', async (req, res, next) => {
       description: `Facturation logistique ${period}`,
     });
 
+    // Enregistrement dans orders — nécessaire pour la réconciliation Dolibarr sync
+    await pool.query(
+      `INSERT INTO orders (client_id, reference, amount, order_type, status, description)
+       VALUES ($1, $2, $3, 'LOGISTIQUE', 'CONFIRMED', $4)
+       ON CONFLICT (reference) DO NOTHING`,
+      [client_id, reference, parsedAmount, `Facturation logistique ${period}`]
+    );
+
     console.log(`[Invoices] Facture mensuelle logistique: ${reference} — client ${client_id}`);
     return res.status(201).json({
       success: true,
