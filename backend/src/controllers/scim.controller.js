@@ -134,6 +134,7 @@ const scimController = {
 
             const GARAGE_GROUP_ID = process.env.SCIM_GARAGE_GROUP_ID;
             const PROVIDER_GROUP_ID = process.env.SCIM_PROVIDER_GROUP_ID;
+            const TRANSPORTEUR_GROUP_ID = process.env.SCIM_TRANSPORTEUR_GROUP_ID;
 
             // Ignorer les admins
             const isAdmin = groupNames.some(g => IGNORED_GROUPS.includes(g));
@@ -154,6 +155,7 @@ const scimController = {
             // Détecter type depuis les groupes
             const isGarage = groupNames.includes('Garages') || groupIds.includes(GARAGE_GROUP_ID);
             const isProvider = groupNames.includes('Providers') || groupIds.includes(PROVIDER_GROUP_ID);
+            const isTransporteur = groupNames.includes('Transporteurs') || groupIds.includes(TRANSPORTEUR_GROUP_ID);
             const isPrestataire = isGarage || isProvider;
             const prestataireType = isGarage ? 'GARAGE' : isProvider ? 'PROVIDER' : null;
 
@@ -276,6 +278,41 @@ const scimController = {
                         [clientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
                     );
                     console.log(`[SCIM] ✅ Wallet ${prestataireType} créé : ${displayName} (${clientId})`);
+                }
+            }
+
+            // Créer wallet TRANSPORTEUR si transporteur
+            if (isTransporteur) {
+                const prestataireId = 'hanyjay_presta_' + displayName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                const existingPresta = await pool.query(
+                    'SELECT prestataire_id FROM prestataires WHERE prestataire_id = $1 LIMIT 1',
+                    [prestataireId]
+                );
+                if (existingPresta.rows.length === 0) {
+                    await pool.query(
+                        `INSERT INTO prestataires (prestataire_id, name, email, type)
+                         VALUES ($1, $2, $3, 'TRANSPORTEUR')`,
+                        [prestataireId, displayName, email]
+                    );
+                }
+                const walletCheck = await pool.query(
+                    'SELECT * FROM prestataire_wallets WHERE prestataire_id = $1', [prestataireId]
+                );
+                if (walletCheck.rows.length === 0) {
+                    const ledger = await blnkService.createLedger(prestataireId, displayName);
+                    const ledgerId = ledger.ledger_id;
+                    const [available, blocked, receivable] = await Promise.all([
+                        blnkService.createBalance(ledgerId, 'MAD', 'available', prestataireId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'blocked', prestataireId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'receivable', prestataireId),
+                    ]);
+                    await pool.query(
+                        `INSERT INTO prestataire_wallets
+                         (prestataire_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+                         VALUES ($1, $2, $3, $4, $5)`,
+                        [prestataireId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                    );
+                    console.log(`[SCIM] ✅ Wallet TRANSPORTEUR créé : ${displayName} (${prestataireId})`);
                 }
             }
 
@@ -552,7 +589,7 @@ const scimController = {
             // `true` par défaut et tentait l'INSERT avec name = undefined (Bug 2 → 500 SQL).
             const isCompanyGroup = !!displayName && !isParentGroup &&
                 !['authentik Admins', 'Wallet Admins', 'Monitoring Admins', 'B2C',
-                    'Garages', 'Providers', 'Prestataires'].includes(displayName);
+                    'Garages', 'Providers', 'Prestataires', 'Transporteurs'].includes(displayName);
 
             if (!displayName) {
                 console.warn(`[SCIM] updateGroup: displayName manquant pour ${groupId} — skip création/maj company`);
@@ -915,6 +952,94 @@ const scimController = {
                         [clientId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
                     );
                     console.log(`[SCIM] ✅ Wallet PROVIDER créé : ${client.name} (${clientId})`);
+                }
+            }
+
+            // ── CAS TRANSPORTEURS ──
+            if (displayName === 'Transporteurs' && members && members.length > 0) {
+                for (const member of members) {
+                    let clientResult = await pool.query(
+                        'SELECT * FROM clients WHERE scim_id = $1 OR client_id = $1 OR client_id = $2',
+                        [member.value, `transporteur_${member.value}`]
+                    );
+
+                    if (clientResult.rows.length === 0) {
+                        console.warn(`[SCIM] ⚠️ Transporteurs member non trouvé en DB — scim_id: ${member.value} display: ${member.display || 'N/A'} — création entrée minimale`);
+                        const transporteurClientId = `transporteur_${member.value}`;
+                        const transporteurName = member.display || `Transporteur ${member.value}`;
+                        await pool.query(
+                            `INSERT INTO clients (client_id, name, email, scim_id, client_type)
+                             VALUES ($1, $2, NULL, $3, 'PRESTATAIRE')
+                             ON CONFLICT DO NOTHING`,
+                            [transporteurClientId, transporteurName, member.value]
+                        );
+                        clientResult = await pool.query(
+                            'SELECT * FROM clients WHERE client_id = $1', [transporteurClientId]
+                        );
+                        if (clientResult.rows.length === 0) continue;
+                    }
+
+                    const client = clientResult.rows[0];
+
+                    let clientId = client.client_id;
+                    if (!clientId.startsWith('transporteur_')) {
+                        const newClientId = `transporteur_${member.value}`;
+                        const dupCheck = await pool.query(
+                            'SELECT client_id FROM clients WHERE client_id = $1', [newClientId]
+                        );
+                        if (dupCheck.rows.length === 0) {
+                            await pool.query(
+                                'UPDATE clients SET client_id = $1, client_type = $2, updated_at = NOW() WHERE scim_id = $3',
+                                [newClientId, 'PRESTATAIRE', member.value]
+                            );
+                            clientId = newClientId;
+                            console.log(`[SCIM] Client renommé : ${client.client_id} → ${newClientId}`);
+                        } else {
+                            clientId = newClientId;
+                        }
+                    }
+
+                    const transporteurKounhanyUuid = client.kounhany_uuid || null;
+                    const prestataireId = 'hanyjay_presta_' + client.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                    const existingPresta = await pool.query(
+                        `SELECT prestataire_id FROM prestataires
+                         WHERE prestataire_id = $1
+                            OR prestataire_id = $2
+                            OR (garage_uuid::text = $3 AND type = 'TRANSPORTEUR')
+                            OR (legacy_uuid::text = $3 AND type = 'TRANSPORTEUR')
+                         LIMIT 1`,
+                        [prestataireId, clientId, transporteurKounhanyUuid]
+                    );
+                    if (existingPresta.rows.length === 0) {
+                        await pool.query(
+                            `INSERT INTO prestataires (prestataire_id, garage_uuid, name, email, phone, type)
+                            VALUES ($1, $2, $3, $4, $5, 'TRANSPORTEUR')`,
+                            [prestataireId, transporteurKounhanyUuid, client.name, client.email, client.phone]
+                        );
+                    }
+
+                    const walletCheck = await pool.query(
+                        'SELECT * FROM prestataire_wallets WHERE prestataire_id = $1', [prestataireId]
+                    );
+                    if (walletCheck.rows.length > 0) {
+                        console.log(`[SCIM] ℹ️ Wallet TRANSPORTEUR existant : ${client.name}`);
+                        continue;
+                    }
+
+                    const ledger = await blnkService.createLedger(prestataireId, client.name);
+                    const ledgerId = ledger.ledger_id;
+                    const [available, blocked, receivable] = await Promise.all([
+                        blnkService.createBalance(ledgerId, 'MAD', 'available', prestataireId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'blocked', prestataireId),
+                        blnkService.createBalance(ledgerId, 'MAD', 'receivable', prestataireId),
+                    ]);
+                    await pool.query(
+                        `INSERT INTO prestataire_wallets
+                        (prestataire_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+                        VALUES ($1, $2, $3, $4, $5)`,
+                        [prestataireId, ledgerId, available.balance_id, blocked.balance_id, receivable.balance_id]
+                    );
+                    console.log(`[SCIM] ✅ Wallet TRANSPORTEUR créé : ${client.name} (${prestataireId})`);
                 }
             }
 

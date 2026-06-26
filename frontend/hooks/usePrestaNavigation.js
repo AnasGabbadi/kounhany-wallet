@@ -8,9 +8,14 @@ export const PRESTA_TYPES = {
     filter: (p) => p.type === 'GARAGE',
   },
   pieces: {
-    label: 'Pièces',
+    label: 'Fournisseurs',
     path: '/prestataires/pieces',
     filter: (p) => p.type === 'PROVIDER',
+  },
+  transporteurs: {
+    label: 'Transporteurs',
+    path: '/prestataires/transporteurs',
+    filter: (p) => p.type === 'TRANSPORTEUR' || p.prestataire_id?.startsWith('hanyjay_presta_'),
   },
 };
 

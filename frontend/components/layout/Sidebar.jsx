@@ -16,6 +16,7 @@ import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 import CoPresentIcon from '@mui/icons-material/CoPresent';
 import GarageIcon from '@mui/icons-material/Garage';
 import BuildIcon from '@mui/icons-material/Build';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import { usePathname, useRouter } from 'next/navigation';
 import { authService } from '@/lib/auth';
 import { useEffect, useState } from 'react';
@@ -27,15 +28,17 @@ const MENU_ITEMS = [
   {
     label: 'Clients', icon: <PeopleIcon />, path: '/clients',
     children: [
-      { label: 'Comptes entreprises', icon: <BusinessIcon />, path: '/clients/organisations' },
-      { label: 'Comptes particuliers', icon: <PersonIcon />, path: '/clients/b2c' },
+      { label: 'Flottes', icon: <BusinessIcon />, path: '/clients/organisations' },
+      { label: 'Particuliers', icon: <PersonIcon />, path: '/clients/b2c' },
+      { label: 'Logistique', icon: <LocalShippingIcon />, path: '/clients/logistique' },
     ],
   },
   {
     label: 'Prestataires', icon: <CoPresentIcon />, path: '/prestataires',
     children: [
       { label: 'Garages', icon: <GarageIcon />, path: '/prestataires/garages' },
-      { label: 'Pièces', icon: <BuildIcon />, path: '/prestataires/pieces' },
+      { label: 'Fournisseurs', icon: <BuildIcon />, path: '/prestataires/pieces' },
+      { label: 'Transporteurs', icon: <LocalShippingIcon />, path: '/prestataires/transporteurs' },
     ],
   },
   { label: 'Commandes', icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
