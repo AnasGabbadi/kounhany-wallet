@@ -9,7 +9,70 @@ const CACHE_TTL_LIST = 60;    // 1 minute — liste prestataires
 const prestatairesService = {
 
   // ─── FIND OR CREATE ───────────────────────────────────────────
-  async findOrCreate({ garage_uuid, name, email, phone }) {
+  async findOrCreate({ garage_uuid, prestataire_id: directId, name, email, phone, type }) {
+
+    // ── Cas 1 : prestataire_id direct (Transporteurs Hanyjay, ex: hanyjay_presta_xxx) ──
+    if (directId) {
+      const cacheKey = `presta:${directId}`;
+
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          console.log(`[Prestataire] Cache hit (direct) : ${directId}`);
+          return { prestataire_id: directId, created: false };
+        }
+      } catch (err) {
+        console.warn('[Prestataire] Redis get failed:', err.message);
+      }
+
+      const existing = await pool.query(
+        'SELECT prestataire_id FROM prestataires WHERE prestataire_id = $1',
+        [directId]
+      );
+
+      if (existing.rows.length > 0) {
+        try {
+          await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ prestataire_id: directId }));
+        } catch (err) {
+          console.warn('[Prestataire] Redis set failed:', err.message);
+        }
+        return { prestataire_id: directId, created: false };
+      }
+
+      // Créer wallets Blnk
+      const prestataireType = type || 'TRANSPORTEUR';
+      const ledger = await blnkService.createLedger(directId, name);
+      const [available, blocked, receivable] = await Promise.all([
+        blnkService.createBalance(ledger.ledger_id, 'MAD', 'available', directId),
+        blnkService.createBalance(ledger.ledger_id, 'MAD', 'blocked', directId),
+        blnkService.createBalance(ledger.ledger_id, 'MAD', 'receivable', directId),
+      ]);
+
+      await pool.query(
+        `INSERT INTO prestataires (prestataire_id, name, email, phone, type)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [directId, name, email || null, phone || null, prestataireType]
+      );
+
+      await pool.query(
+        `INSERT INTO prestataire_wallets
+         (prestataire_id, ledger_id, available_balance_id, blocked_balance_id, receivable_balance_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [directId, ledger.ledger_id, available.balance_id, blocked.balance_id, receivable.balance_id]
+      );
+
+      try {
+        await redis.setEx(cacheKey, CACHE_TTL, JSON.stringify({ prestataire_id: directId }));
+        await redis.del('presta:list');
+      } catch (err) {
+        console.warn('[Prestataire] Redis set failed:', err.message);
+      }
+
+      console.log(`[Prestataire] ✅ Wallet ${prestataireType} créé (direct) : ${name} (${directId})`);
+      return { prestataire_id: directId, created: true };
+    }
+
+    // ── Cas 2 : comportement existant avec garage_uuid (Fleet) ──
     const prestataireId = `prestataire_${garage_uuid}`;
     const cacheKey = `presta:${garage_uuid}`;
 

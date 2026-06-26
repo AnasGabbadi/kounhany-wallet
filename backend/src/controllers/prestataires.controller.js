@@ -7,8 +7,11 @@ const prestatairesController = {
   // Trouver ou créer un wallet prestataire
   async findOrCreate(req, res, next) {
     try {
-      const { garage_uuid, name, email, phone } = req.body;
-      const result = await prestatairesService.findOrCreate({ garage_uuid, name, email, phone });
+      const { garage_uuid, prestataire_id, name, email, phone, type } = req.body;
+      if (!prestataire_id && !garage_uuid) {
+        return res.status(400).json({ success: false, message: 'prestataire_id ou garage_uuid est requis' });
+      }
+      const result = await prestatairesService.findOrCreate({ garage_uuid, prestataire_id, name, email, phone, type });
       res.status(result.created ? 201 : 200).json({ success: true, data: result });
     } catch (err) { next(err); }
   },
