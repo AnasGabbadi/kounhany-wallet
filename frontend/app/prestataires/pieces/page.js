@@ -80,6 +80,7 @@ export default function PiecesPage() {
               balances={balances}
               balancesLoading={balancesLoading}
               onWallet={(id) => goToWallet(id, 'pieces')}
+              columnTitle="Fournisseur"
             />
           )}
         </CardContent>

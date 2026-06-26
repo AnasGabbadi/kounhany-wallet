@@ -9,9 +9,11 @@ import SearchIcon from '@mui/icons-material/Search';
 import { useRouter } from 'next/navigation';
 import { kpisApi } from '@/lib/api';
 import ClientsTable from '@/components/clients/ClientsTable';
+import ClientDetailDialog from '@/components/clients/ClientDetailDialog';
 
 export default function LogistiquePage() {
   const [search, setSearch] = useState('');
+  const [selectedClient, setSelectedClient] = useState(null);
   const router = useRouter();
 
   const { data: clients = [], isLoading } = useSWR(
@@ -83,7 +85,7 @@ export default function LogistiquePage() {
               balancesLoading={balancesLoading}
               scores={scores}
               scoresLoading={scoresLoading}
-              onDetail={(client) => router.push(`/clients/${client.client_id}`)}
+              onDetail={(client) => setSelectedClient(client)}
               onWallet={(id) => router.push(`/clients/${id}/wallet`)}
               onOrders={(id) => router.push(`/clients/${id}/orders`)}
               showContact={false}
@@ -91,6 +93,11 @@ export default function LogistiquePage() {
           )}
         </CardContent>
       </Card>
+      <ClientDetailDialog
+        client={selectedClient}
+        balance={selectedClient ? balances[selectedClient.client_id] : null}
+        onClose={() => setSelectedClient(null)}
+      />
     </Box>
   );
 }

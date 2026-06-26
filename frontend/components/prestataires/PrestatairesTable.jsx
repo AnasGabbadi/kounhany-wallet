@@ -23,7 +23,7 @@ const BalanceChip = ({ value, color }) => (
 );
 
 export default function PrestatairesTable({
-  prestataires, balances, balancesLoading, onWallet,
+  prestataires, balances, balancesLoading, onWallet, columnTitle = 'Garage',
 }) {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(8);
@@ -40,7 +40,7 @@ export default function PrestatairesTable({
         <Table>
           <TableHead>
             <TableRow>
-              {['Garage', 'Statut', 'Contact', 'Disponible', 'Bloqué', 'Créances', 'Actions'].map((h) => (
+              {[columnTitle, 'Statut', 'Contact', 'Disponible', 'Bloqué', 'Créances', 'Actions'].map((h) => (
                 <TableCell
                   key={h}
                   sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.78rem', whiteSpace: 'nowrap' }}

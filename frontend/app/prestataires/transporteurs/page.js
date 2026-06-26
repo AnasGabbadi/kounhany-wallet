@@ -78,6 +78,7 @@ export default function TransporteursPage() {
               balances={balances}
               balancesLoading={balancesLoading}
               onWallet={(id) => goToWallet(id, 'transporteurs')}
+              columnTitle="Transporteur"
             />
           )}
         </CardContent>
