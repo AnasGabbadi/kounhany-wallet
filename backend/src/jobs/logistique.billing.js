@@ -131,6 +131,17 @@ const logistiqueBilling = {
           );
           const prestaName = prestaNameResult.rows[0]?.name || row.prestataire_id;
 
+          // Idempotence Dolibarr — éviter 500 si facture fournisseur déjà créée
+          try {
+            const existingDolibarr = await dolibarrService.findSupplierInvoiceByRef(prestaRef);
+            if (existingDolibarr) {
+              console.log(`[Logistique Billing] Facture fournisseur Dolibarr déjà existante — skip : ${prestaRef}`);
+              continue;
+            }
+          } catch (err) {
+            console.warn(`[Logistique Billing] Erreur vérification idempotence Dolibarr: ${err.message.slice(0, 200)}`);
+          }
+
           const invoiceId = await dolibarrService.createSupplierInvoice({
             prestataireId: row.prestataire_id,
             prestataireName: prestaName,

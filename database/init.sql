@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS prestataire_orders (
   amount NUMERIC(15,2) NOT NULL CHECK (amount > 0),
   reference VARCHAR(255) UNIQUE NOT NULL,
   status VARCHAR(20) DEFAULT 'CONFIRMED'
-    CHECK (status IN ('CONFIRMED', 'PAID', 'CANCELLED')),
+    CHECK (status IN ('PENDING', 'CONFIRMED', 'INVOICED', 'PAID', 'CANCELLED')),
   dolibarr_invoice_id VARCHAR(255),
   blnk_transaction_id VARCHAR(255),
   description TEXT,
@@ -155,3 +155,9 @@ CREATE TABLE IF NOT EXISTS scim_group_cache (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- ─── MIGRATIONS PRESTATAIRE_ORDERS (sur DB existante) ─────────
+-- Ajoute PENDING et INVOICED à la contrainte status (absents à la création initiale)
+ALTER TABLE prestataire_orders DROP CONSTRAINT IF EXISTS prestataire_orders_status_check;
+ALTER TABLE prestataire_orders ADD CONSTRAINT prestataire_orders_status_check
+  CHECK (status IN ('PENDING', 'CONFIRMED', 'INVOICED', 'PAID', 'CANCELLED'));
