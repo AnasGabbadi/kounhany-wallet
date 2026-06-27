@@ -71,6 +71,38 @@ const prestatairesController = {
     } catch (err) { next(err); }
   },
 
+  // Créer une commande prestataire logistique (transport terminé)
+  async createLogistiqueOrder(req, res, next) {
+    try {
+      const { prestataire_id, transport_id, segment_id, amount, reference, order_type } = req.body;
+
+      if (!prestataire_id || !transport_id || !amount || !reference) {
+        return res.status(400).json({
+          success: false,
+          message: 'prestataire_id, transport_id, amount et reference sont requis',
+        });
+      }
+
+      // Guard idempotence
+      const existing = await pool.query(
+        'SELECT id FROM prestataire_orders WHERE reference = $1',
+        [reference]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ success: false, message: 'Commande déjà existante pour cette référence' });
+      }
+
+      const result = await pool.query(
+        `INSERT INTO prestataire_orders (prestataire_id, reference, amount, status, transport_id, segment_id)
+         VALUES ($1, $2, $3, 'CONFIRMED', $4, $5)
+         RETURNING id`,
+        [prestataire_id, reference, parseFloat(amount), parseInt(transport_id), segment_id ? parseInt(segment_id) : null]
+      );
+
+      res.json({ success: true, order_id: result.rows[0].id });
+    } catch (err) { next(err); }
+  },
+
   // Créer facture fournisseur Dolibarr
   async createSupplierInvoice(req, res, next) {
     try {

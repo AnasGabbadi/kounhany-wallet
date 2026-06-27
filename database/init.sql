@@ -161,3 +161,8 @@ CREATE TABLE IF NOT EXISTS scim_group_cache (
 ALTER TABLE prestataire_orders DROP CONSTRAINT IF EXISTS prestataire_orders_status_check;
 ALTER TABLE prestataire_orders ADD CONSTRAINT prestataire_orders_status_check
   CHECK (status IN ('PENDING', 'CONFIRMED', 'INVOICED', 'PAID', 'CANCELLED'));
+
+-- Colonnes logistique Hanyjay (transport terminé → commande prestataire)
+ALTER TABLE prestataire_orders ADD COLUMN IF NOT EXISTS transport_id INTEGER;
+ALTER TABLE prestataire_orders ADD COLUMN IF NOT EXISTS segment_id INTEGER;
+CREATE INDEX IF NOT EXISTS idx_prestataire_orders_transport_id ON prestataire_orders(transport_id);

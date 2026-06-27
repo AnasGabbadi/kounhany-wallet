@@ -166,6 +166,8 @@ router.get('/:id/wallet', ctrl.getWallet);
  */
 router.get('/:id/orders', ctrl.getOrders);
 
+router.post('/orders/logistique', ctrl.createLogistiqueOrder);
+
 router.post('/supplier-invoice', ctrl.createSupplierInvoice);
 
 /**
