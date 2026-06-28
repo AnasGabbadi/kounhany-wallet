@@ -135,7 +135,27 @@ const logistiqueBilling = {
           try {
             const existingDolibarr = await dolibarrService.findSupplierInvoiceByRef(prestaRef);
             if (existingDolibarr) {
-              console.log(`[Logistique Billing] Facture fournisseur Dolibarr déjà existante — skip : ${prestaRef}`);
+              console.log(`[Logistique Billing] Facture fournisseur Dolibarr déjà existante — mise à jour orders : ${prestaRef}`);
+              // Marquer les orders individuelles comme INVOICED
+              await pool.query(
+                `UPDATE prestataire_orders SET status = 'INVOICED', updated_at = NOW() WHERE id = ANY($1)`,
+                [row.order_ids]
+              );
+              // Insérer la ligne de synthèse si absente
+              await pool.query(
+                `INSERT INTO prestataire_orders
+                 (prestataire_id, maintenance_ref, amount, reference, status, description, dolibarr_invoice_id)
+                 VALUES ($1, $2, $3, $4, 'INVOICED', $5, $6)
+                 ON CONFLICT (reference) DO NOTHING`,
+                [
+                  row.prestataire_id,
+                  prestaRef,
+                  parseFloat(row.total),
+                  prestaRef,
+                  `Prestation logistique ${period}`,
+                  existingDolibarr.id || null,
+                ]
+              );
               continue;
             }
           } catch (err) {
