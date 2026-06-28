@@ -95,7 +95,7 @@ describe('OrdersService — createOrder FLEET', () => {
 describe('OrdersService — createOrder LOGISTIQUE', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('doit créer une commande LOGISTIQUE → CONFIRMED direct', async () => {
+  test('doit créer une commande LOGISTIQUE → EN_ATTENTE', async () => {
     pool.query = jest.fn()
       .mockResolvedValueOnce({ rows: [mockClient] })
       .mockResolvedValueOnce({ rows: [] })
@@ -114,7 +114,7 @@ describe('OrdersService — createOrder LOGISTIQUE', () => {
     });
 
     expect(walletService.directConfirm).toHaveBeenCalledWith('client_123', 2000, 'CMD-LOG-001', 'Mission logistique');
-    expect(result.status).toBe('CONFIRMED');
+    expect(result.status).toBe('EN_ATTENTE');
   });
 });
 
