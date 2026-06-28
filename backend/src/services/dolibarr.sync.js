@@ -178,6 +178,58 @@ const dolibarrSync = {
         }
       }
 
+      // ─── Sync paiements Logistique HANY-CLIENT ──────────────────────
+      // getPaidInvoices() ne retourne pas ces factures (bug listing API Dolibarr).
+      // On interroge directement Dolibarr par thirdparty_ids pour chaque client en attente.
+      const pendingLogiOrders = await pool.query(`
+        SELECT * FROM orders
+        WHERE reference LIKE 'HANY-CLIENT-%'
+          AND status = 'CONFIRMED'
+          AND order_type = 'LOGISTIQUE'
+      `);
+
+      for (const order of pendingLogiOrders.rows) {
+        try {
+          const syncRef = `SYNC-LOGI-${order.reference}`;
+
+          const logiExisting = await pool.query(
+            'SELECT id FROM transaction_logs WHERE reference = $1', [syncRef]
+          );
+          if (logiExisting.rows.length > 0) continue;
+
+          const invoice = await dolibarrService.findPaidInvoiceForClient(order.client_id, order.reference);
+          if (!invoice) {
+            console.log(`[Dolibarr Sync Logistique] Facture non payée dans Dolibarr — ${order.reference}`);
+            continue;
+          }
+
+          const amount = parseFloat(invoice.total_ttc);
+
+          await walletService.externalDebt(
+            order.client_id,
+            amount,
+            `DEBT-${syncRef}`,
+            `Solde créance Logistique — ${order.reference}`
+          );
+
+          await walletService.pay(
+            order.client_id,
+            amount,
+            syncRef,
+            `Paiement Dolibarr Logistique — ${order.reference}`
+          );
+
+          await pool.query(
+            `UPDATE orders SET status = 'PAID', updated_at = NOW() WHERE id = $1`,
+            [order.id]
+          );
+
+          console.log(`[Dolibarr Sync Logistique] ✅ Paiement reçu client:${order.client_id} montant:${amount} — ${order.reference}`);
+        } catch (err) {
+          console.error(`[Dolibarr Sync Logistique] ❌ Erreur ${order.reference}: ${err.message.slice(0, 200)}`);
+        }
+      }
+
       // ─── Factures fournisseurs (Prestataires) ─────────────────────
       const supplierInvoices = await dolibarrService.getPaidSupplierInvoices();
       console.log(`[Dolibarr Sync] ${supplierInvoices.length} facture(s) fournisseur payée(s)`);

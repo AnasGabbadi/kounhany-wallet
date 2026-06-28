@@ -70,7 +70,7 @@ const logistiqueBilling = {
           console.warn(`[Logistique Billing] Erreur vérification idempotence: ${err.message.slice(0, 200)}`);
         }
 
-        await dolibarrService.createInvoice({
+        const invoiceId = await dolibarrService.createInvoice({
           clientId: clientData.clientId,
           clientName: clientData.clientName,
           amount: clientData.total,
@@ -90,14 +90,15 @@ const logistiqueBilling = {
         // Ligne de synthèse pour le sync paiement Dolibarr
         await pool.query(
           `INSERT INTO orders
-           (client_id, reference, amount, status, order_type, description, confirmed_at, created_at, updated_at)
-           VALUES ($1, $2, $3, 'CONFIRMED', 'LOGISTIQUE', $4, NOW(), NOW(), NOW())
-           ON CONFLICT (reference) DO NOTHING`,
+           (client_id, reference, amount, status, order_type, description, dolibarr_invoice_id, confirmed_at, created_at, updated_at)
+           VALUES ($1, $2, $3, 'CONFIRMED', 'LOGISTIQUE', $4, $5, NOW(), NOW(), NOW())
+           ON CONFLICT (reference) DO UPDATE SET dolibarr_invoice_id = EXCLUDED.dolibarr_invoice_id`,
           [
             clientData.clientId,
             reference,
             parseFloat(clientData.total),
             `Facturation logistique ${period}`,
+            String(invoiceId),
           ]
         );
         console.log(`[Logistique Billing] Ligne synthèse insérée : ${reference}`);

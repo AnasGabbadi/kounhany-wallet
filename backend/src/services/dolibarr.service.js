@@ -294,6 +294,30 @@ const dolibarrService = {
     }
   },
 
+  // ── Recherche facture payée via socid du client (contourne le bug listing Dolibarr) ─
+  async findPaidInvoiceForClient(clientId, refClient) {
+    try {
+      const partyRes = await dolibarrApi.get('/thirdparties', {
+        params: { sqlfilters: `(t.ref_ext:=:'${clientId}')`, limit: 1 },
+      });
+      const parties = Array.isArray(partyRes.data) ? partyRes.data : Object.values(partyRes.data || {});
+      if (parties.length === 0) return null;
+      const socid = parties[0].id;
+
+      const res = await dolibarrApi.get('/invoices', {
+        params: { thirdparty_ids: socid, limit: 100, sortfield: 't.rowid', sortorder: 'DESC' },
+      });
+      const invoices = Array.isArray(res.data) ? res.data : Object.values(res.data || {});
+
+      return invoices.find(
+        inv => inv.ref_client === refClient && inv.statut === '2' && inv.paye === '1'
+      ) || null;
+    } catch (err) {
+      if (err.response?.status === 404) return null;
+      throw err;
+    }
+  },
+
   // ── Recherche facture client par ref_client ────────────────────────────────
   async findInvoiceByClientRef(refClient) {
     try {
