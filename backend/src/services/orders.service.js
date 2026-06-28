@@ -73,10 +73,10 @@ class OrdersService {
         description || `Mission Logistique ${reference}`
       );
       await db.query(
-        'UPDATE orders SET status=$1, blnk_transaction_id=$2, confirmed_at=NOW(), updated_at=NOW() WHERE id=$3',
-        ['CONFIRMED', walletResult.transaction_id, newOrder.id]
+        'UPDATE orders SET status=$1, blnk_transaction_id=$2, updated_at=NOW() WHERE id=$3',
+        ['PENDING', walletResult.transaction_id, newOrder.id]
       );
-      newOrder.status = 'CONFIRMED';
+      newOrder.status = 'PENDING';
 
     } else if (order_type === 'B2C') {
       // PAYMENT → @World → Available
@@ -359,6 +359,30 @@ class OrdersService {
       `UPDATE orders SET status = 'CONFIRMED', confirmed_at = NOW(), updated_at = NOW()
      WHERE id = $1 RETURNING *`,
       [orderId]
+    );
+
+    return updated.rows[0];
+  }
+
+  // ─── MISE À JOUR STATUS PAR TRANSACTION ID ────────────────────────────────
+  async updateOrderStatus(transactionId, status) {
+    const VALID_STATUSES = ['PENDING', 'CONFIRMED', 'PAID', 'CANCELLED'];
+    if (!VALID_STATUSES.includes(status)) {
+      throw { status: 400, message: `Status invalide — valeurs acceptées: ${VALID_STATUSES.join(', ')}` };
+    }
+
+    const existing = await db.query(
+      'SELECT id FROM orders WHERE blnk_transaction_id = $1',
+      [transactionId]
+    );
+    if (existing.rows.length === 0) {
+      throw { status: 404, message: `Order introuvable pour transaction ${transactionId}` };
+    }
+
+    const confirmedAt = status === 'CONFIRMED' ? ', confirmed_at = NOW()' : '';
+    const updated = await db.query(
+      `UPDATE orders SET status = $1, updated_at = NOW()${confirmedAt} WHERE blnk_transaction_id = $2 RETURNING *`,
+      [status, transactionId]
     );
 
     return updated.rows[0];
