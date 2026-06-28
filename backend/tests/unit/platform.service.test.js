@@ -37,7 +37,7 @@ describe('Platform Service — init', () => {
 
   test('doit gérer les erreurs sans crasher', async () => {
     pool.query = jest.fn().mockRejectedValue(new Error('DB error'));
-    await expect(platformService.init()).resolves.not.toThrow();
+    await expect(platformService.init()).resolves.toBeUndefined();
   });
 });
 
