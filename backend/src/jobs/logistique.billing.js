@@ -55,7 +55,7 @@ const logistiqueBilling = {
     // Créer une facture par client
     for (const clientData of Object.values(byClient)) {
       try {
-        const reference = `LOG-${year}${String(month).padStart(2, '0')}-${clientData.clientId.slice(-8)}`;
+        const reference = `HANY-CLIENT-${clientData.clientId}-${year}-${String(month).padStart(2, '0')}`;
         const description = `Missions logistique — ${String(month).padStart(2, '0')}/${year} (${clientData.orders.length} mission${clientData.orders.length > 1 ? 's' : ''})`;
 
         // Idempotence — skip si facture déjà créée dans Dolibarr
