@@ -74,9 +74,9 @@ class OrdersService {
       );
       await db.query(
         'UPDATE orders SET status=$1, blnk_transaction_id=$2, updated_at=NOW() WHERE id=$3',
-        ['PENDING', walletResult.transaction_id, newOrder.id]
+        ['EN_ATTENTE', walletResult.transaction_id, newOrder.id]
       );
-      newOrder.status = 'PENDING';
+      newOrder.status = 'EN_ATTENTE';
 
     } else if (order_type === 'B2C') {
       // PAYMENT → @World → Available
@@ -110,7 +110,7 @@ class OrdersService {
   // ─── LISTE DES COMMANDES D'UN CLIENT ──────────────────────────────────────
   async getClientOrders(clientId, { order_type, status, page = 1, limit = 20 } = {}) {
 
-    let query = 'SELECT * FROM orders WHERE client_id = $1';
+    let query = "SELECT * FROM orders WHERE client_id = $1 AND reference NOT LIKE 'HANY-CLIENT-%'";
     const params = [clientId];
     let idx = 2;
 
@@ -122,7 +122,7 @@ class OrdersService {
 
     const result = await db.query(query, params);
     const countResult = await db.query(
-      'SELECT COUNT(*) FROM orders WHERE client_id = $1',
+      "SELECT COUNT(*) FROM orders WHERE client_id = $1 AND reference NOT LIKE 'HANY-CLIENT-%'",
       [clientId]
     );
 
@@ -144,7 +144,7 @@ class OrdersService {
       SELECT o.*, c.name as client_name, c.email as client_email
       FROM orders o
       JOIN clients c ON o.client_id = c.client_id
-      WHERE 1=1
+      WHERE o.reference NOT LIKE 'HANY-CLIENT-%'
     `;
     const params = [];
     let idx = 1;
@@ -158,7 +158,7 @@ class OrdersService {
     const result = await db.query(query, params);
 
     // Count avec les mêmes filtres
-    let countQuery = 'SELECT COUNT(*) FROM orders WHERE 1=1';
+    let countQuery = "SELECT COUNT(*) FROM orders WHERE reference NOT LIKE 'HANY-CLIENT-%'";
     const countParams = [];
     let countIdx = 1;
     if (order_type) { countQuery += ` AND order_type = $${countIdx++}`; countParams.push(order_type); }
@@ -366,7 +366,7 @@ class OrdersService {
 
   // ─── MISE À JOUR STATUS PAR TRANSACTION ID ────────────────────────────────
   async updateOrderStatus(transactionId, status) {
-    const VALID_STATUSES = ['PENDING', 'CONFIRMED', 'PAID', 'CANCELLED'];
+    const VALID_STATUSES = ['EN_ATTENTE', 'CONFIRMED', 'PAID', 'CANCELLED'];
     if (!VALID_STATUSES.includes(status)) {
       throw { status: 400, message: `Status invalide — valeurs acceptées: ${VALID_STATUSES.join(', ')}` };
     }
@@ -444,7 +444,7 @@ class OrdersService {
       message: order_type === 'FLEET'
         ? 'Montant bloqué — en attente de confirmation service'
         : order_type === 'LOGISTIQUE'
-          ? 'Mission confirmée directement'
+          ? 'Mission enregistrée — en attente de livraison'
           : 'Paiement B2C enregistré',
     };
   }
