@@ -18,6 +18,7 @@ const logistiqueBilling = {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
+    const period = `${year}-${String(month).padStart(2, '0')}`;
 
     // Récupérer toutes les commandes LOGISTIQUE CONFIRMED du mois
     const ordersResult = await pool.query(`
@@ -80,11 +81,26 @@ const logistiqueBilling = {
         // Mettre à jour les orders → INVOICED
         const orderIds = clientData.orders.map(o => o.id);
         await pool.query(
-          `UPDATE orders 
+          `UPDATE orders
            SET status = 'INVOICED', updated_at = NOW()
            WHERE id = ANY($1)`,
           [orderIds]
         );
+
+        // Ligne de synthèse pour le sync paiement Dolibarr
+        await pool.query(
+          `INSERT INTO orders
+           (client_id, reference, amount, status, order_type, description, confirmed_at, created_at, updated_at)
+           VALUES ($1, $2, $3, 'CONFIRMED', 'LOGISTIQUE', $4, NOW(), NOW(), NOW())
+           ON CONFLICT (reference) DO NOTHING`,
+          [
+            clientData.clientId,
+            reference,
+            parseFloat(clientData.total),
+            `Facturation logistique ${period}`,
+          ]
+        );
+        console.log(`[Logistique Billing] Ligne synthèse insérée : ${reference}`);
 
         console.log(`[Logistique Billing] ✅ Facture créée pour ${clientData.clientName} — ${clientData.total} MAD (${clientData.orders.length} missions)`);
       } catch (err) {
@@ -93,7 +109,6 @@ const logistiqueBilling = {
     }
 
     // ─── Facturation prestataires LOGISTIQUE ─────────────────────────
-    const period = `${year}-${String(month).padStart(2, '0')}`;
     const prestaOrdersResult = await pool.query(`
       SELECT
         prestataire_id,
