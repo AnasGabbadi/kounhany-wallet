@@ -294,6 +294,8 @@ router.post('/:id/confirm', ordersController.confirmOrder);
  */
 router.post('/:id/cancel', ordersController.cancelOrder);
 
+router.patch('/:transactionId/status', ordersController.updateOrderStatus);
+
 router.patch('/:id/metadata', ordersController.updateMetadata);
 
 router.post('/:id/validate-invoices', ordersController.validateInvoices);

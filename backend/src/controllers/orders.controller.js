@@ -117,6 +117,22 @@ exports.cancelOrder = async (req, res, next) => {
   }
 };
 
+// PATCH /orders/:transactionId/status
+exports.updateOrderStatus = async (req, res, next) => {
+  try {
+    const { transactionId } = req.params;
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ success: false, error: 'Champ requis : status' });
+    }
+    const result = await ordersService.updateOrderStatus(transactionId, status);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, error: err.message });
+    next(err);
+  }
+};
+
 exports.updateMetadata = async (req, res, next) => {
   try {
     const { id } = req.params;
