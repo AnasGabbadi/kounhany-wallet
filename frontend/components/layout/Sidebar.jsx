@@ -17,6 +17,7 @@ import CoPresentIcon from '@mui/icons-material/CoPresent';
 import GarageIcon from '@mui/icons-material/Garage';
 import BuildIcon from '@mui/icons-material/Build';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { authService } from '@/lib/auth';
 import { Suspense, useEffect, useState } from 'react';
@@ -53,6 +54,7 @@ const MENU_ITEMS = [
     ],
   },
   { label: 'Commandes',     icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
+  { label: 'Facturation',   icon: <ReceiptLongIcon />,         path: '/facturation' },
   { label: 'Transactions',  icon: <ReceiptIcon />,             path: '/transactions' },
 ];
 

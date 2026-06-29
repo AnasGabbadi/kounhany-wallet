@@ -11,13 +11,23 @@ const logistiqueBilling = {
     return tomorrow.getMonth() !== today.getMonth();
   },
 
+  // Exécute la facturation pour une période donnée (YYYY-MM) ou le mois courant
+  async runBilling(periodOverride = null) {
+    return this.generateMonthlyInvoices(periodOverride);
+  },
+
   // Génère les factures mensuelles pour tous les clients LOGISTIQUE
-  async generateMonthlyInvoices() {
+  async generateMonthlyInvoices(periodOverride = null) {
     console.log('[Logistique Billing] Démarrage facturation mensuelle...');
 
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
+    let year, month;
+    if (periodOverride && /^\d{4}-\d{2}$/.test(periodOverride)) {
+      [year, month] = periodOverride.split('-').map(Number);
+    } else {
+      year = now.getFullYear();
+      month = now.getMonth() + 1;
+    }
     const period = `${year}-${String(month).padStart(2, '0')}`;
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 

@@ -3,6 +3,7 @@ const app = require('./app');
 const dolibarrSync = require('./services/dolibarr.sync');
 const platformService = require('./services/platform.service');
 const logistiqueBilling = require('./jobs/logistique.billing');
+const billingScheduleService = require('./services/billing.schedule.service');
 
 const PORT = process.env.PORT || 3000;
 
@@ -16,6 +17,14 @@ const startServer = async () => {
   await platformService.init();
   await dolibarrSync.start();
   logistiqueBilling.start();
+
+  setInterval(async () => {
+    try {
+      await billingScheduleService.runPending();
+    } catch (err) {
+      console.error('[BillingSchedule] Erreur runPending:', err.message);
+    }
+  }, 60 * 1000);
 };
 
 startServer();
