@@ -30,6 +30,7 @@ const logistiqueBilling = {
       JOIN clients c ON o.client_id = c.client_id
       WHERE o.order_type = 'LOGISTIQUE'
         AND o.status = 'CONFIRMED'
+        AND o.dolibarr_invoice_id IS NULL
         AND EXTRACT(MONTH FROM o.confirmed_at) = $1
         AND EXTRACT(YEAR FROM o.confirmed_at) = $2
       ORDER BY o.client_id, o.created_at
@@ -79,13 +80,13 @@ const logistiqueBilling = {
           reference,
         });
 
-        // Mettre à jour les orders → INVOICED
+        // Mettre à jour les orders → INVOICED + stocker dolibarr_invoice_id
         const orderIds = clientData.orders.map(o => o.id);
         await pool.query(
           `UPDATE orders
-           SET status = 'INVOICED', updated_at = NOW()
+           SET status = 'INVOICED', dolibarr_invoice_id = $2, updated_at = NOW()
            WHERE id = ANY($1)`,
-          [orderIds]
+          [orderIds, String(invoiceId)]
         );
 
         // Ligne de synthèse pour le sync paiement Dolibarr
