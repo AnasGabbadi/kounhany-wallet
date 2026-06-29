@@ -19,6 +19,7 @@ const logistiqueBilling = {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const period = `${year}-${String(month).padStart(2, '0')}`;
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     // Récupérer toutes les commandes LOGISTIQUE CONFIRMED du mois
     const ordersResult = await pool.query(`
@@ -56,7 +57,7 @@ const logistiqueBilling = {
     // Créer une facture par client
     for (const clientData of Object.values(byClient)) {
       try {
-        const reference = `HANY-CLIENT-${clientData.clientId}-${year}-${String(month).padStart(2, '0')}`;
+        const reference = `HANY-CLIENT-${clientData.clientId}-${period}-${timeStr}`;
         const description = `Missions logistique — ${String(month).padStart(2, '0')}/${year} (${clientData.orders.length} mission${clientData.orders.length > 1 ? 's' : ''})`;
 
         // Idempotence — skip si facture déjà créée dans Dolibarr
@@ -92,7 +93,7 @@ const logistiqueBilling = {
           `INSERT INTO orders
            (client_id, reference, amount, status, order_type, description, dolibarr_invoice_id, confirmed_at, created_at, updated_at)
            VALUES ($1, $2, $3, 'CONFIRMED', 'LOGISTIQUE', $4, $5, NOW(), NOW(), NOW())
-           ON CONFLICT (reference) DO UPDATE SET dolibarr_invoice_id = EXCLUDED.dolibarr_invoice_id`,
+           ON CONFLICT (reference) DO NOTHING`,
           [
             clientData.clientId,
             reference,
@@ -128,7 +129,7 @@ const logistiqueBilling = {
 
       for (const row of prestaOrdersResult.rows) {
         try {
-          const prestaRef = `HANY-PRESTA-${row.prestataire_id}-${period}`;
+          const prestaRef = `HANY-PRESTA-${row.prestataire_id}-${period}-${timeStr}`;
 
           // Idempotence — vérifier si déjà facturé ce mois
           const existingBilling = await pool.query(
