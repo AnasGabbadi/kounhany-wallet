@@ -244,24 +244,30 @@ const dolibarrSync = {
 
       // Rattrapage : synthèses PAID dont les orders individuelles sont encore INVOICED
       const paidSyntheses = await pool.query(`
-        SELECT client_id, reference FROM orders
+        SELECT client_id, reference, dolibarr_invoice_id FROM orders
         WHERE reference LIKE 'HANY-CLIENT-%'
           AND status = 'PAID'
           AND order_type = 'LOGISTIQUE'
       `);
 
       for (const row of paidSyntheses.rows) {
+        if (!row.dolibarr_invoice_id) {
+          console.log('[Dolibarr Sync] Rattrapage skippé pour ' + row.reference + ' — dolibarr_invoice_id NULL');
+          continue;
+        }
+
         const updated = await pool.query(`
           UPDATE orders SET status = 'PAID', updated_at = NOW()
           WHERE client_id = $1
             AND order_type = 'LOGISTIQUE'
             AND status = 'INVOICED'
             AND reference NOT LIKE 'HANY-CLIENT-%'
+            AND dolibarr_invoice_id = $2
           RETURNING reference
-        `, [row.client_id]);
+        `, [row.client_id, row.dolibarr_invoice_id]);
 
         if (updated.rowCount > 0) {
-          console.log('[Dolibarr Sync] Rattrapage orders individuelles PAID pour client: ' + row.client_id + ' — ' + updated.rowCount + ' orders');
+          console.log('[Dolibarr Sync] Rattrapage orders individuelles PAID pour client: ' + row.client_id + ' (invoice ' + row.dolibarr_invoice_id + ') — ' + updated.rowCount + ' orders');
         }
       }
 
