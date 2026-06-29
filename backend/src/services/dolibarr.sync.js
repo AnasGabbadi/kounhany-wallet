@@ -129,6 +129,18 @@ const dolibarrSync = {
                 [o.id]
               );
 
+              await pool.query(
+                `UPDATE orders SET status = 'PAID', updated_at = NOW()
+                 WHERE client_id = $1
+                   AND order_type = 'LOGISTIQUE'
+                   AND status = 'INVOICED'
+                   AND reference NOT LIKE 'HANY-CLIENT-%'
+                   AND EXTRACT(MONTH FROM confirmed_at) = EXTRACT(MONTH FROM NOW())
+                   AND EXTRACT(YEAR FROM confirmed_at) = EXTRACT(YEAR FROM NOW())`,
+                [o.client_id]
+              );
+              console.log('[Dolibarr Sync Logistique] Orders individuelles → PAID pour client: ' + o.client_id);
+
               console.log(`[Dolibarr Sync Logistique] Paiement reçu client:${o.client_id} montant:${amount}`);
             } catch (err) {
               console.error(`[Dolibarr Sync Logistique] ❌ Erreur ${invoice.ref_client}: ${err.message.slice(0, 200)}`);

@@ -18,8 +18,9 @@ const STATUS_CONFIG = {
   BLOCKED: { label: 'Bloqué', bg: 'rgba(245,158,11,0.1)', color: '#F59E0B' },
   CONFIRMED: { label: 'Confirmé', bg: 'rgba(59,130,246,0.1)', color: '#3B82F6' },
   CANCELLED: { label: 'Annulé', bg: 'rgba(239,68,68,0.1)', color: '#EF4444' },
-  PAID: { label: 'Payé', bg: 'rgba(16,185,129,0.1)', color: '#10B981' },
   PENDING: { label: 'En attente', bg: 'rgba(107,114,128,0.1)', color: '#6B7280' },
+  INVOICED: { label: 'Facturé', bg: 'rgba(139,92,246,0.1)', color: '#8B5CF6' },
+  PAID: { label: 'Payé', bg: 'rgba(16,185,129,0.1)', color: '#10B981' },
 };
 
 const TYPE_CONFIG = {

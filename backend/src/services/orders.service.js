@@ -74,9 +74,9 @@ class OrdersService {
       );
       await db.query(
         'UPDATE orders SET status=$1, blnk_transaction_id=$2, updated_at=NOW() WHERE id=$3',
-        ['EN_ATTENTE', walletResult.transaction_id, newOrder.id]
+        ['PENDING', walletResult.transaction_id, newOrder.id]
       );
-      newOrder.status = 'EN_ATTENTE';
+      newOrder.status = 'PENDING';
 
     } else if (order_type === 'B2C') {
       // PAYMENT → @World → Available
@@ -366,7 +366,7 @@ class OrdersService {
 
   // ─── MISE À JOUR STATUS PAR TRANSACTION ID ────────────────────────────────
   async updateOrderStatus(transactionId, status) {
-    const VALID_STATUSES = ['EN_ATTENTE', 'CONFIRMED', 'PAID', 'CANCELLED'];
+    const VALID_STATUSES = ['PENDING', 'CONFIRMED', 'PAID', 'CANCELLED'];
     if (!VALID_STATUSES.includes(status)) {
       throw { status: 400, message: `Status invalide — valeurs acceptées: ${VALID_STATUSES.join(', ')}` };
     }
