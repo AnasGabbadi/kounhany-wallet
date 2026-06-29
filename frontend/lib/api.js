@@ -112,4 +112,12 @@ export const prestatairesApi = {
   supplierInvoices: (prestataireId) => api.get(`/dolibarr/supplier-invoices/${prestataireId}`),
 };
 
+export const billingSchedulesApi = {
+  list: () => api.get('/billing-schedules'),
+  create: (data) => api.post('/billing-schedules', data),
+  update: (id, data) => api.put(`/billing-schedules/${id}`, data),
+  delete: (id) => api.delete(`/billing-schedules/${id}`),
+  runNow: (id) => api.post(`/billing-schedules/${id}/run`),
+};
+
 export default api;

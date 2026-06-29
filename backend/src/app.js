@@ -20,6 +20,7 @@ const { metricsMiddleware, metricsEndpoint } = require('./metrics');
 const dolibarrSync = require('./services/dolibarr.sync');
 const prestatairesRoutes = require('./routes/prestataires.routes');
 const invoicesRoutes = require('./routes/invoices.routes');
+const billingScheduleRoutes = require('./routes/billing.schedule.routes');
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use('/orders', ordersRoutes);
 app.use('/scoring', scoringRoutes);
 app.use('/prestataires', prestatairesRoutes);
 app.use('/invoices', invoicesRoutes);
+app.use('/billing-schedules', billingScheduleRoutes);
 app.use(errorMiddleware);
 
 module.exports = app;
