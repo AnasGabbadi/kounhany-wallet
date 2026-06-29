@@ -96,7 +96,7 @@ const dolibarrSync = {
               const orderResult = await pool.query(
                 `SELECT * FROM orders
                  WHERE reference = $1
-                   AND status != 'PAID'
+                   AND status NOT IN ('CANCELLED')
                    AND order_type = 'LOGISTIQUE'
                  LIMIT 1`,
                 [invoice.ref_client]
@@ -239,6 +239,29 @@ const dolibarrSync = {
           console.log(`[Dolibarr Sync Logistique] ✅ Paiement reçu client:${order.client_id} montant:${amount} — ${order.reference}`);
         } catch (err) {
           console.error(`[Dolibarr Sync Logistique] ❌ Erreur ${order.reference}: ${err.message.slice(0, 200)}`);
+        }
+      }
+
+      // Rattrapage : synthèses PAID dont les orders individuelles sont encore INVOICED
+      const paidSyntheses = await pool.query(`
+        SELECT client_id, reference FROM orders
+        WHERE reference LIKE 'HANY-CLIENT-%'
+          AND status = 'PAID'
+          AND order_type = 'LOGISTIQUE'
+      `);
+
+      for (const row of paidSyntheses.rows) {
+        const updated = await pool.query(`
+          UPDATE orders SET status = 'PAID', updated_at = NOW()
+          WHERE client_id = $1
+            AND order_type = 'LOGISTIQUE'
+            AND status = 'INVOICED'
+            AND reference NOT LIKE 'HANY-CLIENT-%'
+          RETURNING reference
+        `, [row.client_id]);
+
+        if (updated.rowCount > 0) {
+          console.log('[Dolibarr Sync] Rattrapage orders individuelles PAID pour client: ' + row.client_id + ' — ' + updated.rowCount + ' orders');
         }
       }
 
