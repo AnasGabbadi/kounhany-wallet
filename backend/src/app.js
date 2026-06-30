@@ -21,6 +21,8 @@ const dolibarrSync = require('./services/dolibarr.sync');
 const prestatairesRoutes = require('./routes/prestataires.routes');
 const invoicesRoutes = require('./routes/invoices.routes');
 const billingScheduleRoutes = require('./routes/billing.schedule.routes');
+const permissionsRoutes = require('./routes/permissions.routes');
+const usersRoutes = require('./routes/users.routes');
 
 const app = express();
 
@@ -85,6 +87,8 @@ app.use('/scoring', scoringRoutes);
 app.use('/prestataires', prestatairesRoutes);
 app.use('/invoices', invoicesRoutes);
 app.use('/billing-schedules', billingScheduleRoutes);
+app.use('/permissions', permissionsRoutes);
+app.use('/admin/users', usersRoutes);
 app.use(errorMiddleware);
 
 module.exports = app;

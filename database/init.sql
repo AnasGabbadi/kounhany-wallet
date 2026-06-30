@@ -166,3 +166,13 @@ ALTER TABLE prestataire_orders ADD CONSTRAINT prestataire_orders_status_check
 ALTER TABLE prestataire_orders ADD COLUMN IF NOT EXISTS transport_id INTEGER;
 ALTER TABLE prestataire_orders ADD COLUMN IF NOT EXISTS segment_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_prestataire_orders_transport_id ON prestataire_orders(transport_id);
+
+-- ─── PERMISSIONS MANAGER ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS role_permissions (
+  id SERIAL PRIMARY KEY,
+  role VARCHAR(20) NOT NULL DEFAULT 'manager',
+  permission_key VARCHAR(50) NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(role, permission_key)
+);

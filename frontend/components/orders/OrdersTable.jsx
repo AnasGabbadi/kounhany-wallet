@@ -11,6 +11,7 @@ import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import { useState } from 'react';
 import OrderDetailDialog from '@/components/orders/OrderDetailDialog';
+import { usePermissions } from '@/lib/permissions';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
 
@@ -33,6 +34,7 @@ export default function OrdersTable({ orders = [], onConfirm, onCancel, actionLo
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const { hasPermission } = usePermissions();
 
   const paginated = orders.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -160,26 +162,35 @@ export default function OrdersTable({ orders = [], onConfirm, onCancel, actionLo
                         {/* Actions */}
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                            {order.status === 'BLOCKED' && (
-                              <>
-                                <Tooltip title="Confirmer">
-                                  <span>
-                                    <IconButton size="small" onClick={() => onConfirm(order.id)} disabled={isLoading}
-                                      sx={{ color: '#3B82F6', '&:hover': { bgcolor: 'rgba(59,130,246,0.08)' } }}>
-                                      {isLoading ? <CircularProgress size={14} /> : <CheckCircleOutlineIcon fontSize="small" />}
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                                <Tooltip title="Annuler">
-                                  <span>
-                                    <IconButton size="small" onClick={() => onCancel(order.id)} disabled={isLoading}
-                                      sx={{ color: '#EF4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.08)' } }}>
-                                      <CancelOutlinedIcon fontSize="small" />
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                              </>
-                            )}
+                            {order.status === 'BLOCKED' && (() => {
+                              const isFleet = order.order_type === 'FLEET';
+                              const canConfirm = hasPermission('orders.confirm') && (!isFleet || hasPermission('orders.fleet_confirm'));
+                              const canCancel = hasPermission('orders.cancel') && (!isFleet || hasPermission('orders.fleet_cancel'));
+                              return (
+                                <>
+                                  {canConfirm && (
+                                    <Tooltip title="Confirmer">
+                                      <span>
+                                        <IconButton size="small" onClick={() => onConfirm(order.id)} disabled={isLoading}
+                                          sx={{ color: '#3B82F6', '&:hover': { bgcolor: 'rgba(59,130,246,0.08)' } }}>
+                                          {isLoading ? <CircularProgress size={14} /> : <CheckCircleOutlineIcon fontSize="small" />}
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                  )}
+                                  {canCancel && (
+                                    <Tooltip title="Annuler">
+                                      <span>
+                                        <IconButton size="small" onClick={() => onCancel(order.id)} disabled={isLoading}
+                                          sx={{ color: '#EF4444', '&:hover': { bgcolor: 'rgba(239,68,68,0.08)' } }}>
+                                          <CancelOutlinedIcon fontSize="small" />
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                  )}
+                                </>
+                              );
+                            })()}
                             <Button
                               size="small"
                               variant="outlined"

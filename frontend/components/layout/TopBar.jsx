@@ -18,6 +18,7 @@ import { useState, useEffect } from 'react';
 import { authService } from '@/lib/auth';
 import { useAlerts } from '@/lib/alerts-context';
 import { dolibarrApi } from '@/lib/api';
+import { usePermissions } from '@/lib/permissions';
 
 const NOTIF_LIMIT = 5;
 
@@ -43,6 +44,7 @@ export default function TopBar({ onMenuClick }) {
   const router = useRouter();
   const title = pageTitles[pathname] || 'Kounhany Wallet';
   const { alerts, markAllRead, unreadCount, financialAlerts } = useAlerts();
+  const { hasPermission } = usePermissions();
 
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
@@ -108,26 +110,28 @@ export default function TopBar({ onMenuClick }) {
           {title}
         </Typography>
 
-        {/* ─── Bouton Sync Dolibarr — visible partout ─────────── */}
-        <Tooltip title="Synchroniser les paiements Dolibarr">
-          <IconButton
-            onClick={handleSync}
-            disabled={syncing}
-            sx={{
-              color: syncSuccess ? '#10B981' : syncing ? '#FAC345' : 'text.secondary',
-              transition: 'color 0.3s',
-              '&:hover': { bgcolor: 'rgba(250,195,69,0.08)' },
-            }}
-          >
-            <SyncIcon
+        {/* ─── Bouton Sync Dolibarr — conditionnel dolibarr.sync ── */}
+        {hasPermission('dolibarr.sync') && (
+          <Tooltip title="Synchroniser les paiements Dolibarr">
+            <IconButton
+              onClick={handleSync}
+              disabled={syncing}
               sx={{
-                fontSize: 22,
-                animation: syncing ? 'spin 1s linear infinite' : 'none',
-                '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } },
+                color: syncSuccess ? '#10B981' : syncing ? '#FAC345' : 'text.secondary',
+                transition: 'color 0.3s',
+                '&:hover': { bgcolor: 'rgba(250,195,69,0.08)' },
               }}
-            />
-          </IconButton>
-        </Tooltip>
+            >
+              <SyncIcon
+                sx={{
+                  fontSize: 22,
+                  animation: syncing ? 'spin 1s linear infinite' : 'none',
+                  '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } },
+                }}
+              />
+            </IconButton>
+          </Tooltip>
+        )}
         {/* ──────────────────────────────────────────────────────── */}
 
         {/* Icône notifications */}

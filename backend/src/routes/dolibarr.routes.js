@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const dolibarrController = require('../controllers/dolibarr.controller');
+const { requirePermission } = require('../middlewares/permission.middleware');
 
 /**
  * @swagger
@@ -75,7 +76,7 @@ router.get('/invoices/:clientId', dolibarrController.getClientInvoices);
  *       503:
  *         description: Dolibarr inaccessible
  */
-router.post('/sync', dolibarrController.forceSync);
+router.post('/sync', requirePermission('dolibarr.sync'), dolibarrController.forceSync);
 
 router.post('/webhook', dolibarrController.webhook);
 router.get('/supplier-invoices/:prestataireId', dolibarrController.getPrestaInvoices);

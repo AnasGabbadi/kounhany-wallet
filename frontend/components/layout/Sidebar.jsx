@@ -18,8 +18,10 @@ import GarageIcon from '@mui/icons-material/Garage';
 import BuildIcon from '@mui/icons-material/Build';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { authService } from '@/lib/auth';
+import { getLocalRole } from '@/lib/permissions';
 import { Suspense, useEffect, useState } from 'react';
 
 const DRAWER_WIDTH = 260;
@@ -56,6 +58,7 @@ const MENU_ITEMS = [
   { label: 'Commandes',     icon: <ShoppingBagOutlinedIcon />, path: '/orders' },
   { label: 'Facturation',   icon: <ReceiptLongIcon />,         path: '/facturation' },
   { label: 'Transactions',  icon: <ReceiptIcon />,             path: '/transactions' },
+  { label: 'Utilisateurs',  icon: <PeopleOutlineIcon />,       path: '/utilisateurs', adminOnly: true },
 ];
 
 function MenuItem({ item, pathname, router, fromParam }) {
@@ -178,13 +181,14 @@ function MenuItem({ item, pathname, router, fromParam }) {
 }
 
 // Composant interne isolé dans Suspense pour lire useSearchParams
-function SidebarMenu({ pathname, router }) {
+function SidebarMenu({ pathname, router, isAdmin }) {
   const searchParams = useSearchParams();
   const fromParam = searchParams.get('from');
+  const visibleItems = MENU_ITEMS.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <List sx={{ px: 1.5, pt: 2, flex: 1 }}>
-      {MENU_ITEMS.map((item) => (
+      {visibleItems.map((item) => (
         <MenuItem key={item.path} item={item} pathname={pathname} router={router} fromParam={fromParam} />
       ))}
     </List>
@@ -192,10 +196,11 @@ function SidebarMenu({ pathname, router }) {
 }
 
 // Fallback sans fromParam (identique à l'état initial)
-function SidebarMenuFallback({ pathname, router }) {
+function SidebarMenuFallback({ pathname, router, isAdmin }) {
+  const visibleItems = MENU_ITEMS.filter(item => !item.adminOnly || isAdmin);
   return (
     <List sx={{ px: 1.5, pt: 2, flex: 1 }}>
-      {MENU_ITEMS.map((item) => (
+      {visibleItems.map((item) => (
         <MenuItem key={item.path} item={item} pathname={pathname} router={router} fromParam={null} />
       ))}
     </List>
@@ -207,10 +212,12 @@ export default function Sidebar({ open }) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     setUser(authService.getUser());
+    setIsAdmin(getLocalRole() === 'admin');
   }, []);
 
   if (!mounted) return null;
@@ -260,8 +267,8 @@ export default function Sidebar({ open }) {
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mx: 2 }} />
 
       {/* Menu — SidebarMenu utilise useSearchParams, isolé dans Suspense */}
-      <Suspense fallback={<SidebarMenuFallback pathname={pathname} router={router} />}>
-        <SidebarMenu pathname={pathname} router={router} />
+      <Suspense fallback={<SidebarMenuFallback pathname={pathname} router={router} isAdmin={isAdmin} />}>
+        <SidebarMenu pathname={pathname} router={router} isAdmin={isAdmin} />
       </Suspense>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mx: 2 }} />

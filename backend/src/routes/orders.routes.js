@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ordersController = require('../controllers/orders.controller');
+const { requirePermission } = require('../middlewares/permission.middleware');
 
 /**
  * @swagger
@@ -241,7 +242,7 @@ router.get('/', ordersController.getAllOrders);
  */
 router.get('/:id', ordersController.getOne);
 
-router.post('/:id/confirm', ordersController.confirmOrder);
+router.post('/:id/confirm', requirePermission('orders.confirm'), ordersController.confirmOrder);
 
 /**
  * @swagger
@@ -270,7 +271,7 @@ router.post('/:id/confirm', ordersController.confirmOrder);
  *       422:
  *         description: Commande non BLOCKED
  */
-router.post('/:id/cancel', ordersController.cancelOrder);
+router.post('/:id/cancel', requirePermission('orders.cancel'), ordersController.cancelOrder);
 
 router.patch('/:transactionId/status', ordersController.updateOrderStatus);
 

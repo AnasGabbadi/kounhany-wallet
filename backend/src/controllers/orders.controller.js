@@ -1,5 +1,6 @@
 const ordersService = require('../services/orders.service');
 const pool = require('../config/db');
+const { checkPermission } = require('../middlewares/permission.middleware');
 
 // ── Validation commune ────────────────────────────────────────────────────────
 const validateOrderBody = (body) => {
@@ -98,7 +99,21 @@ exports.getAllOrders = async (req, res, next) => {
 // POST /orders/:id/confirm
 exports.confirmOrder = async (req, res, next) => {
   try {
-    const result = await ordersService.confirmOrder(parseInt(req.params.id));
+    const id = parseInt(req.params.id);
+    // Vérification fleet_confirm pour les managers
+    if (req.user?.role === 'manager') {
+      const orderRes = await pool.query('SELECT order_type FROM orders WHERE id = $1', [id]);
+      if (orderRes.rows.length && orderRes.rows[0].order_type === 'FLEET') {
+        const allowed = await checkPermission('manager', 'orders.fleet_confirm');
+        if (!allowed) {
+          return res.status(403).json({
+            success: false,
+            message: "Permission insuffisante — 'orders.fleet_confirm' requise",
+          });
+        }
+      }
+    }
+    const result = await ordersService.confirmOrder(id);
     res.json({ success: true, data: result });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
@@ -109,7 +124,21 @@ exports.confirmOrder = async (req, res, next) => {
 // POST /orders/:id/cancel
 exports.cancelOrder = async (req, res, next) => {
   try {
-    const result = await ordersService.cancelOrder(parseInt(req.params.id));
+    const id = parseInt(req.params.id);
+    // Vérification fleet_cancel pour les managers
+    if (req.user?.role === 'manager') {
+      const orderRes = await pool.query('SELECT order_type FROM orders WHERE id = $1', [id]);
+      if (orderRes.rows.length && orderRes.rows[0].order_type === 'FLEET') {
+        const allowed = await checkPermission('manager', 'orders.fleet_cancel');
+        if (!allowed) {
+          return res.status(403).json({
+            success: false,
+            message: "Permission insuffisante — 'orders.fleet_cancel' requise",
+          });
+        }
+      }
+    }
+    const result = await ordersService.cancelOrder(id);
     res.json({ success: true, data: result });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });

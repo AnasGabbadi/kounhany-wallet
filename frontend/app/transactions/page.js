@@ -8,6 +8,7 @@ import {
   Button, Avatar, Chip,
 } from '@mui/material';
 import { kpisApi } from '@/lib/api';
+import { usePermissions } from '@/lib/permissions';
 import StatusBadge from '@/components/common/StatusBadge';
 import TransactionKpis from '@/components/transactions/TransactionKpis';
 import TransactionFilters from '@/components/transactions/TransactionFilters';
@@ -34,6 +35,7 @@ const exportCSV = (transactions) => {
 };
 
 export default function TransactionsPage() {
+  const { hasPermission } = usePermissions();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -82,7 +84,7 @@ export default function TransactionsPage() {
             typeFilter={typeFilter} setTypeFilter={setTypeFilter}
             dateFrom={dateFrom} setDateFrom={setDateFrom}
             dateTo={dateTo} setDateTo={setDateTo}
-            onExport={() => exportCSV(filtered)}
+            onExport={hasPermission('transactions.export') ? () => exportCSV(filtered) : undefined}
             filteredCount={filtered.length}
             totalCount={transactions.length}
           />

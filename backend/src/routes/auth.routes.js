@@ -29,10 +29,12 @@ router.post('/callback', async (req, res) => {
     );
 
     const groups = decoded.groups || [];
-    const allowedGroups = (process.env.AUTHENTIK_ADMIN_GROUPS).split(',');
-    const isAdmin = groups.some(g => allowedGroups.map(g => g.trim()).includes(g));
+    const adminGroups = (process.env.AUTHENTIK_ADMIN_GROUPS || 'Wallet Admins').split(',').map(g => g.trim());
+    const managerGroups = (process.env.AUTHENTIK_MANAGER_GROUPS || 'Wallet Managers').split(',').map(g => g.trim());
+    const isAdmin = groups.some(g => adminGroups.includes(g));
+    const isManager = groups.some(g => managerGroups.includes(g));
 
-    if (!isAdmin) {
+    if (!isAdmin && !isManager) {
       return res.status(403).json({
         success: false,
         message: 'Accès refusé — compte non autorisé'

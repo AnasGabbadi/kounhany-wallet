@@ -13,6 +13,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { billingSchedulesApi } from '@/lib/api';
+import { usePermissions } from '@/lib/permissions';
 
 const STATUS_CONFIG = {
   PENDING: { label: 'Planifié', bg: 'rgba(107,114,128,0.1)', color: '#6B7280' },
@@ -25,6 +26,7 @@ const HEADERS = ['Label', 'Période', "Date d'exécution", 'Statut', 'Actions'];
 const EMPTY_FORM = { label: '', period: '', scheduled_at: '' };
 
 export default function FacturationPage() {
+  const { hasPermission } = usePermissions();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [modalOpen, setModalOpen] = useState(false);
@@ -135,14 +137,16 @@ export default function FacturationPage() {
             {schedules.length} planification{schedules.length !== 1 ? 's' : ''}
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<ReceiptLongIcon />}
-          onClick={openCreate}
-          sx={{ bgcolor: '#FAC345', color: '#212529', boxShadow: 'none', fontWeight: 700, '&:hover': { bgcolor: '#a8832d', boxShadow: 'none' } }}
-        >
-          Planifier une facturation
-        </Button>
+        {hasPermission('facturation.create') && (
+          <Button
+            variant="contained"
+            startIcon={<ReceiptLongIcon />}
+            onClick={openCreate}
+            sx={{ bgcolor: '#FAC345', color: '#212529', boxShadow: 'none', fontWeight: 700, '&:hover': { bgcolor: '#a8832d', boxShadow: 'none' } }}
+          >
+            Planifier une facturation
+          </Button>
+        )}
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>{error}</Alert>}
@@ -224,26 +228,32 @@ export default function FacturationPage() {
                           )}
                           {s.status === 'PENDING' && (
                             <>
-                              <Tooltip title="Modifier">
-                                <IconButton size="small" onClick={() => openEdit(s)}>
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Supprimer">
-                                <IconButton size="small" onClick={() => setDeleteDialogId(s.id)} sx={{ '&:hover': { color: '#EF4444' } }}>
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Exécuter maintenant">
-                                <span>
-                                  <IconButton size="small" onClick={() => handleRunNow(s)} disabled={runningId === s.id} sx={{ '&:hover': { color: '#10B981' } }}>
-                                    {runningId === s.id ? <CircularProgress size={16} /> : <PlayArrowIcon fontSize="small" />}
+                              {hasPermission('facturation.edit') && (
+                                <Tooltip title="Modifier">
+                                  <IconButton size="small" onClick={() => openEdit(s)}>
+                                    <EditIcon fontSize="small" />
                                   </IconButton>
-                                </span>
-                              </Tooltip>
+                                </Tooltip>
+                              )}
+                              {hasPermission('facturation.delete') && (
+                                <Tooltip title="Supprimer">
+                                  <IconButton size="small" onClick={() => setDeleteDialogId(s.id)} sx={{ '&:hover': { color: '#EF4444' } }}>
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              {hasPermission('facturation.run') && (
+                                <Tooltip title="Exécuter maintenant">
+                                  <span>
+                                    <IconButton size="small" onClick={() => handleRunNow(s)} disabled={runningId === s.id} sx={{ '&:hover': { color: '#10B981' } }}>
+                                      {runningId === s.id ? <CircularProgress size={16} /> : <PlayArrowIcon fontSize="small" />}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              )}
                             </>
                           )}
-                          {(s.status === 'DONE' || s.status === 'ERROR') && (
+                          {(s.status === 'DONE' || s.status === 'ERROR') && hasPermission('facturation.run') && (
                             <Tooltip title="Relancer">
                               <span>
                                 <IconButton size="small" onClick={() => handleRunNow(s)} disabled={runningId === s.id} sx={{ '&:hover': { color: '#FAC345' } }}>

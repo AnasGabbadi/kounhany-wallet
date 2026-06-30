@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/prestataires.controller');
+const { requirePermission } = require('../middlewares/permission.middleware');
 
 /**
  * @swagger
@@ -166,9 +167,9 @@ router.get('/:id/wallet', ctrl.getWallet);
  */
 router.get('/:id/orders', ctrl.getOrders);
 
-router.post('/orders/logistique', ctrl.createLogistiqueOrder);
+router.post('/orders/logistique', requirePermission('prestataires.wallet_actions'), ctrl.createLogistiqueOrder);
 
-router.post('/supplier-invoice', ctrl.createSupplierInvoice);
+router.post('/supplier-invoice', requirePermission('prestataires.wallet_actions'), ctrl.createSupplierInvoice);
 
 /**
  * @swagger

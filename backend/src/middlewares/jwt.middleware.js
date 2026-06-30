@@ -79,21 +79,23 @@ const jwtMiddleware = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Unauthorized — Token invalide' });
     }
 
-    // ← Vérifier que l'user est dans le groupe Wallet Admins
     const groups = decoded.groups || [];
-    const allowedGroups = (process.env.AUTHENTIK_ADMIN_GROUPS || 'Wallet Admins').split(',');
+    const adminGroups = (process.env.AUTHENTIK_ADMIN_GROUPS || 'Wallet Admins').split(',').map(g => g.trim());
+    const managerGroups = (process.env.AUTHENTIK_MANAGER_GROUPS || 'Wallet Managers').split(',').map(g => g.trim());
 
-    const isAdmin = groups.some(g => allowedGroups.includes(g));
+    const isAdmin = groups.some(g => adminGroups.includes(g));
+    const isManager = groups.some(g => managerGroups.includes(g));
 
-    if (!isAdmin) {
+    if (!isAdmin && !isManager) {
       console.log(`[JWT] Accès refusé — groupes: ${groups.join(', ')}`);
       return res.status(403).json({
         success: false,
-        message: 'Accès refusé — droits administrateur requis'
+        message: 'Accès refusé — droits insuffisants'
       });
     }
 
     req.user = decoded;
+    req.user.role = isAdmin ? 'admin' : 'manager';
     next();
   });
 };

@@ -80,17 +80,19 @@ export default function TransactionFilters({
           />
         )}
 
-        <Box sx={{ ml: 'auto' }}>
-          <Button
-            variant="outlined"
-            startIcon={<FileDownloadIcon />}
-            onClick={onExport}
-            size="small"
-            sx={{ borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary', fontWeight: 600 }}
-          >
-            Export CSV
-          </Button>
-        </Box>
+        {onExport && (
+          <Box sx={{ ml: 'auto' }}>
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={onExport}
+              size="small"
+              sx={{ borderColor: 'rgba(0,0,0,0.2)', color: 'text.secondary', fontWeight: 600 }}
+            >
+              Export CSV
+            </Button>
+          </Box>
+        )}
       </Box>
     </Box>
   );

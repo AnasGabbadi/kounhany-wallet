@@ -15,22 +15,25 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useState } from 'react';
 import StatusBadge from '@/components/common/StatusBadge';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
+import { usePermissions } from '@/lib/permissions';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
 
-const ACTIONS = [
-  { key: 'pay', label: 'Recharger le wallet', desc: 'Ajouter des fonds au compte disponible', icon: <AddCircleOutlineIcon fontSize="small" />, color: '#10B981' },
-  { key: 'block', label: 'Bloquer un montant', desc: 'Réserver du compte disponible', icon: <BlockIcon fontSize="small" />, color: '#F59E0B' },
-  { key: 'confirm', label: 'Confirmer un blocage', desc: 'Consommer un montant bloqué', icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#3B82F6' },
-  { key: 'unblock', label: 'Débloquer un montant', desc: 'Restituer un montant bloqué vers le disponible', icon: <LockOpenIcon fontSize="small" />, color: '#F59E0B' },
-  { key: 'external-debt', label: 'Dette Dolibarr', desc: 'Enregistrer une facture externe', icon: <ReceiptLongIcon fontSize="small" />, color: '#EF4444' },
-  { key: 'external-payment', label: 'Paiement Dolibarr', desc: 'Enregistrer un paiement externe', icon: <PaymentIcon fontSize="small" />, color: '#10B981' },
+const ALL_ACTIONS = [
+  { key: 'pay',              permKey: 'wallet.pay',              label: 'Recharger le wallet',        desc: 'Ajouter des fonds au compte disponible',        icon: <AddCircleOutlineIcon fontSize="small" />, color: '#10B981' },
+  { key: 'block',            permKey: 'wallet.block',            label: 'Bloquer un montant',         desc: 'Réserver du compte disponible',                 icon: <BlockIcon fontSize="small" />,           color: '#F59E0B' },
+  { key: 'confirm',          permKey: 'wallet.confirm',          label: 'Confirmer un blocage',       desc: 'Consommer un montant bloqué',                   icon: <CheckCircleOutlineIcon fontSize="small" />, color: '#3B82F6' },
+  { key: 'unblock',          permKey: 'wallet.block',            label: 'Débloquer un montant',       desc: 'Restituer un montant bloqué vers le disponible', icon: <LockOpenIcon fontSize="small" />,         color: '#F59E0B' },
+  { key: 'external-debt',    permKey: 'wallet.external_debt',    label: 'Dette Dolibarr',             desc: 'Enregistrer une facture externe',               icon: <ReceiptLongIcon fontSize="small" />,      color: '#EF4444' },
+  { key: 'external-payment', permKey: 'wallet.external_payment', label: 'Paiement Dolibarr',          desc: 'Enregistrer un paiement externe',               icon: <PaymentIcon fontSize="small" />,          color: '#10B981' },
 ];
 
 export default function TransactionTable({ transactions, onAction }) {
   const [anchor, setAnchor] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
+  const { hasPermission } = usePermissions();
+  const ACTIONS = ALL_ACTIONS.filter(a => hasPermission(a.permKey));
 
   const paginated = transactions.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -61,14 +64,16 @@ export default function TransactionTable({ transactions, onAction }) {
             />
           </Box>
 
-          <Button
-            variant="contained"
-            endIcon={<KeyboardArrowDownIcon />}
-            onClick={(e) => setAnchor(e.currentTarget)}
-            sx={{ bgcolor: '#FAC345', color: '#212529', fontWeight: 700, '&:hover': { bgcolor: '#E0A820' } }}
-          >
-            Actions wallet
-          </Button>
+          {ACTIONS.length > 0 && (
+            <Button
+              variant="contained"
+              endIcon={<KeyboardArrowDownIcon />}
+              onClick={(e) => setAnchor(e.currentTarget)}
+              sx={{ bgcolor: '#FAC345', color: '#212529', fontWeight: 700, '&:hover': { bgcolor: '#E0A820' } }}
+            >
+              Actions wallet
+            </Button>
+          )}
 
           <Menu
             anchorEl={anchor}

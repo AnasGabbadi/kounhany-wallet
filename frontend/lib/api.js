@@ -119,4 +119,15 @@ export const billingSchedulesApi = {
   runNow: (id) => api.post(`/billing-schedules/${id}/run`),
 };
 
+export const permissionsApi = {
+  me: () => api.get('/permissions/me'),
+  definitions: () => api.get('/permissions/definitions'),
+  getManager: () => api.get('/permissions/manager'),
+  updateManager: (permissions) => api.put('/permissions/manager', { permissions }),
+};
+
+export const adminApi = {
+  listUsers: () => api.get('/admin/users'),
+};
+
 export default api;

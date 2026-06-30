@@ -2,6 +2,7 @@ const router = require('express').Router();
 const walletController = require('../controllers/wallet.controller');
 const validate = require('../middlewares/validate.middleware');
 const v = require('../validations/wallet.validation');
+const { requirePermission } = require('../middlewares/permission.middleware');
 
 /**
  * @swagger
@@ -64,7 +65,7 @@ router.post('/check-available', validate(v.checkAvailable), walletController.che
  *       200:
  *         description: Transaction créée
  */
-router.post('/block', validate(v.block), walletController.block);
+router.post('/block', requirePermission('wallet.block'), validate(v.block), walletController.block);
 
 /**
  * @swagger
@@ -94,7 +95,7 @@ router.post('/block', validate(v.block), walletController.block);
  *       200:
  *         description: Transaction confirmée
  */
-router.post('/confirm', validate(v.confirm), walletController.confirm);
+router.post('/confirm', requirePermission('wallet.confirm'), validate(v.confirm), walletController.confirm);
 
 /**
  * @swagger
@@ -124,7 +125,7 @@ router.post('/confirm', validate(v.confirm), walletController.confirm);
  *       200:
  *         description: Paiement enregistré
  */
-router.post('/pay', validate(v.pay), walletController.pay);
+router.post('/pay', requirePermission('wallet.pay'), validate(v.pay), walletController.pay);
 
 /**
  * @swagger
@@ -205,7 +206,7 @@ router.get('/transactions/:clientId', walletController.getTransactions);
  *       404:
  *         description: Client introuvable
  */
-router.post('/external-debt', validate(v.externalDebt), walletController.externalDebt);
+router.post('/external-debt', requirePermission('wallet.external_debt'), validate(v.externalDebt), walletController.externalDebt);
 
 /**
  * @swagger
@@ -244,7 +245,7 @@ router.post('/external-debt', validate(v.externalDebt), walletController.externa
  *       404:
  *         description: Client introuvable
  */
-router.post('/external-payment', validate(v.externalPayment), walletController.externalPayment);
+router.post('/external-payment', requirePermission('wallet.external_payment'), validate(v.externalPayment), walletController.externalPayment);
 
 /**
  * @swagger
