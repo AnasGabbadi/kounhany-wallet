@@ -5,10 +5,8 @@ import {
   Box, Typography, Alert, CircularProgress,
   Card, CardContent, TextField, InputAdornment,
   Select, MenuItem, FormControl, InputLabel, Stack,
-  Button, Tooltip,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import ShoppingBagOutlinedIcon from '@mui/icons-material/ShoppingBagOutlined';
 import { kpisApi, ordersApi } from '@/lib/api';
 import OrdersStatCards from '@/components/orders/OrdersStatCards';
@@ -20,9 +18,6 @@ export default function OrdersPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
-  const [invoicing, setInvoicing] = useState(false);
-  const [invoiceSuccess, setInvoiceSuccess] = useState(null);
-
   const { data: orders = [], isLoading, mutate } = useSWR(
     'orders', () => kpisApi.orders(), { refreshInterval: 30000 }
   );
@@ -63,19 +58,6 @@ export default function OrdersPage() {
     }
   };
 
-  const handleInvoiceLogistique = async () => {
-    setInvoicing(true);
-    try {
-      await ordersApi.invoiceLogistique();
-      setInvoiceSuccess('Facturation mensuelle LOGISTIQUE lancée');
-      mutate();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setInvoicing(false);
-    }
-  };
-
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
@@ -89,23 +71,9 @@ export default function OrdersPage() {
           </Typography>
         </Box>
 
-        <Tooltip title="Générer les factures mensuelles pour toutes les missions LOGISTIQUE CONFIRMED">
-          <span>
-            <Button
-              variant="contained"
-              startIcon={invoicing ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <ReceiptLongIcon />}
-              onClick={handleInvoiceLogistique}
-              disabled={invoicing}
-              sx={{ bgcolor: '#FAC345', color: '#212529', boxShadow: 'none', fontWeight: 700, '&:hover': { bgcolor: '#a8832d', boxShadow: 'none' } }}
-            >
-              Facturer LOGISTIQUE
-            </Button>
-          </span>
-        </Tooltip>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>{error}</Alert>}
-      {invoiceSuccess && <Alert severity="success" sx={{ mb: 3 }} onClose={() => setInvoiceSuccess(null)}>{invoiceSuccess}</Alert>}
 
       <OrdersStatCards orders={orders} />
 

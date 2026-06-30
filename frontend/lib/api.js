@@ -101,7 +101,6 @@ export const ordersApi = {
   getAll: (params) => api.get('/orders', { params }),
   confirm: (id) => api.post(`/orders/${id}/confirm`),
   cancel: (id) => api.post(`/orders/${id}/cancel`),
-  invoiceLogistique: () => api.post('/orders/logistique/invoice'),
 };
 
 export const prestatairesApi = {

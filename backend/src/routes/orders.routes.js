@@ -195,28 +195,6 @@ router.get('/', ordersController.getAllOrders);
 
 /**
  * @swagger
- * /orders/logistique/invoice:
- *   post:
- *     summary: Générer les factures mensuelles LOGISTIQUE manuellement
- *     tags: [Orders]
- *     security:
- *       - ApiKeyAuth: []
- *     responses:
- *       200:
- *         description: Factures générées
- */
-router.post('/logistique/invoice', async (req, res, next) => {
-  try {
-    const logistiqueBilling = require('../jobs/logistique.billing');
-    await logistiqueBilling.generateMonthlyInvoices();
-    res.json({ success: true, message: 'Facturation mensuelle lancée' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * @swagger
  * /orders/{id}/confirm:
  *   post:
  *     summary: Confirmer une commande FLEET
