@@ -18,7 +18,7 @@ import { useState, useEffect } from 'react';
 import { authService } from '@/lib/auth';
 import { useAlerts } from '@/lib/alerts-context';
 import { dolibarrApi } from '@/lib/api';
-import { usePermissions } from '@/lib/permissions';
+import { usePermissions, getLocalRoleLabel, getDisplayName } from '@/lib/permissions';
 
 const NOTIF_LIMIT = 5;
 
@@ -80,6 +80,8 @@ export default function TopBar({ onMenuClick }) {
 
   const safeAlerts = Array.isArray(alerts) ? alerts : [];
   const safeFinancialAlerts = Array.isArray(financialAlerts) ? financialAlerts : [];
+  const displayName = getDisplayName(user);
+  const roleLabel = getLocalRoleLabel();
 
   const handleLogout = () => {
     authService.logout();
@@ -295,7 +297,7 @@ export default function TopBar({ onMenuClick }) {
             cursor: 'pointer',
           }}
         >
-          {user?.preferred_username?.charAt(0).toUpperCase() || user?.name?.charAt(0).toUpperCase() || 'A'}
+          {displayName ? displayName.charAt(0).toUpperCase() : ''}
         </Avatar>
 
         <Menu
@@ -309,9 +311,9 @@ export default function TopBar({ onMenuClick }) {
           <MenuItem disabled sx={{ opacity: '1 !important' }}>
             <Box>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {user?.preferred_username || user?.name || 'Administrateur'}
+                {displayName}
               </Typography>
-              <Typography variant="caption" color="text.secondary">Administrateur</Typography>
+              <Typography variant="caption" color="text.secondary">{roleLabel}</Typography>
             </Box>
           </MenuItem>
           <Divider />

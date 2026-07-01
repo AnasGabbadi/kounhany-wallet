@@ -21,7 +21,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { authService } from '@/lib/auth';
-import { getLocalRole } from '@/lib/permissions';
+import { getLocalRole, getLocalRoleLabel, getDisplayName } from '@/lib/permissions';
 import { Suspense, useEffect, useState } from 'react';
 
 const DRAWER_WIDTH = 260;
@@ -222,6 +222,9 @@ export default function Sidebar({ open }) {
 
   if (!mounted) return null;
 
+  const displayName = getDisplayName(user);
+  const roleLabel = getLocalRoleLabel();
+
   const handleLogout = () => {
     authService.logout();
     router.push('/login');
@@ -284,14 +287,14 @@ export default function Sidebar({ open }) {
             width: 36, height: 36, bgcolor: '#FAC345',
             color: '#212529', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0,
           }}>
-            {user?.name?.charAt(0).toUpperCase() || user?.preferred_username?.charAt(0).toUpperCase() || 'A'}
+            {displayName ? displayName.charAt(0).toUpperCase() : ''}
           </Avatar>
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="body2" sx={{ color: 'white', fontWeight: 600, fontSize: '0.82rem' }} noWrap>
-              {user?.name || user?.preferred_username || 'Admin'}
+              {displayName}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem' }} noWrap>
-              {user?.email || 'Wallet Admin'}
+              {roleLabel}
             </Typography>
           </Box>
           <Box

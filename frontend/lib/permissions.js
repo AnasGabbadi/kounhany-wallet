@@ -72,4 +72,16 @@ export function getLocalRole() {
   return getRoleFromToken();
 }
 
+const ROLE_LABELS = { admin: 'Wallet Admin', manager: 'Wallet Manager' };
+
+// Libellé de rôle affiché — dérivé de la même logique que getLocalRole()
+export function getLocalRoleLabel() {
+  return ROLE_LABELS[getRoleFromToken()] || '';
+}
+
+// Nom affiché depuis le JWT décodé, avec repli neutre si absent
+export function getDisplayName(user) {
+  return user?.name || user?.preferred_username || user?.email || '';
+}
+
 export { invalidatePermissionsCache };
