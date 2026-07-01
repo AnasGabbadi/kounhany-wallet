@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const blnkService = require('../services/blnk.service');
+const authentikService = require('../services/authentik.service');
 const { v4: uuidv4 } = require('uuid');
 
 // Groupes admin — pas de wallet créé
@@ -17,6 +18,23 @@ const PARENT_GROUPS = (process.env.SCIM_PARENT_GROUPS || '')
     .split(',')
     .map(g => g.trim())
     .filter(Boolean);
+
+// Groupes Wallet Admins / Wallet Managers (page /utilisateurs) — jamais de
+// client/wallet créé pour ces groupes, seulement invalidation du cache
+// authentik.service (5 min) pour un affichage temps réel dans /utilisateurs.
+const AUTHENTIK_ADMIN_GROUPS = (process.env.AUTHENTIK_ADMIN_GROUPS || '')
+    .split(',')
+    .map(g => g.trim())
+    .filter(Boolean);
+
+const AUTHENTIK_MANAGER_GROUPS = (process.env.AUTHENTIK_MANAGER_GROUPS || '')
+    .split(',')
+    .map(g => g.trim())
+    .filter(Boolean);
+
+function isWalletAdminOrManagerGroupName(name) {
+    return !!name && (AUTHENTIK_ADMIN_GROUPS.includes(name) || AUTHENTIK_MANAGER_GROUPS.includes(name));
+}
 
 // Cache groupId (Authentik) → displayName, persisté en DB (table scim_group_cache).
 // Les GET /Groups/:id n'ont pas de body — on retient le nom vu lors du dernier
@@ -136,10 +154,15 @@ const scimController = {
             const PROVIDER_GROUP_ID = process.env.SCIM_PROVIDER_GROUP_ID;
             const TRANSPORTEUR_GROUP_ID = process.env.SCIM_TRANSPORTEUR_GROUP_ID;
 
-            // Ignorer les admins
-            const isAdmin = groupNames.some(g => IGNORED_GROUPS.includes(g));
+            // Ignorer les admins — aucun client/wallet créé pour ces groupes.
+            // Wallet Admins / Wallet Managers (AUTHENTIK_ADMIN_GROUPS / AUTHENTIK_MANAGER_GROUPS)
+            // alimentent /utilisateurs via authentik.service.js (cache 5 min) plutôt que la table
+            // `clients` — on invalide ce cache pour que l'ajout apparaisse immédiatement.
+            const isWalletAdminOrManager = groupNames.some(isWalletAdminOrManagerGroupName);
+            const isAdmin = isWalletAdminOrManager || groupNames.some(g => IGNORED_GROUPS.includes(g));
             if (isAdmin) {
-                console.log(`[SCIM] Admin ignoré : ${userName}`);
+                console.log(`[SCIM] Admin ignoré (user create) : groupe(s)=${groupNames.join(',') || 'N/A'}`);
+                if (isWalletAdminOrManager) authentikService.invalidateUsersCache();
                 return res.status(201).json({
                     schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
                     id: id || uuidv4(),
@@ -577,22 +600,31 @@ const scimController = {
             const { displayName, members } = req.body;
             const groupId = req.params.id;
 
-            console.log('[SCIM RAW updateGroup]', JSON.stringify({ displayName, members }));
             console.log(`[SCIM] updateGroup: ${displayName} (${groupId}) — ${(members || []).length} members`);
 
             if (displayName) await cacheGroupName(groupId, displayName);
 
             const B2B_PARENT_GROUPS = ['Fleet', 'Logistique'];
             const isParentGroup = B2B_PARENT_GROUPS.includes(displayName);
+            // Wallet Admins / Wallet Managers : jamais de client/wallet — seulement
+            // invalidation du cache users pour un affichage temps réel dans /utilisateurs
+            // (même principe que le refresh temps réel des clients Fleet/Logistique/B2C,
+            // mais sans création de wallet puisque ces groupes ne représentent pas des clients).
+            const isWalletAdminOrManager = isWalletAdminOrManagerGroupName(displayName);
             // !!displayName est requis : un displayName undefined/vide ne matche aucune
             // liste d'exclusion ci-dessous, donc sans ce check isCompanyGroup devenait
             // `true` par défaut et tentait l'INSERT avec name = undefined (Bug 2 → 500 SQL).
-            const isCompanyGroup = !!displayName && !isParentGroup &&
+            const isCompanyGroup = !!displayName && !isParentGroup && !isWalletAdminOrManager &&
                 !['authentik Admins', 'Wallet Admins', 'Monitoring Admins', 'B2C',
                     'Garages', 'Providers', 'Prestataires', 'Transporteurs'].includes(displayName);
 
             if (!displayName) {
                 console.warn(`[SCIM] updateGroup: displayName manquant pour ${groupId} — skip création/maj company`);
+            }
+
+            if (isWalletAdminOrManager) {
+                console.log(`[SCIM] updateGroup: groupe=${displayName} — invalidation cache users (pas de wallet)`);
+                authentikService.invalidateUsersCache();
             }
 
             // ── CAS B2B company → wallet company partagé ──
@@ -1073,6 +1105,15 @@ const scimController = {
 
             if (displayName) await cacheGroupName(groupId, displayName);
 
+            // Wallet Admins / Wallet Managers : invalider ici aussi, avant même de savoir
+            // si l'Operation "members" est exploitable (ci-dessous) — un ajout/retrait
+            // (ex: PATCH remove sur un seul membre) ne doit jamais rester bloqué par un
+            // format d'Operation non reconnu et manquer l'invalidation du cache users.
+            if (isWalletAdminOrManagerGroupName(displayName)) {
+                console.log(`[SCIM] patchGroup: groupe=${displayName} — invalidation cache users (pas de wallet)`);
+                authentikService.invalidateUsersCache();
+            }
+
             // Construire la liste de members à partir des opérations PATCH
             let members = null;
             for (const op of Operations || []) {
@@ -1119,6 +1160,19 @@ const scimController = {
     },
 
     async deleteGroup(req, res) {
+        try {
+            // Pas de logique de suppression de client/wallet ici : Wallet Admins /
+            // Wallet Managers n'ont jamais de ligne dans `clients` (ignorés à la
+            // création). On invalide seulement le cache users si ce groupe en est un.
+            const groupId = req.params.id;
+            const displayName = await getCachedGroupName(groupId);
+            if (isWalletAdminOrManagerGroupName(displayName)) {
+                console.log(`[SCIM] deleteGroup: groupe=${displayName} — invalidation cache users`);
+                authentikService.invalidateUsersCache();
+            }
+        } catch (err) {
+            console.error('[SCIM] Erreur deleteGroup:', err.message);
+        }
         res.status(204).send();
     },
 };

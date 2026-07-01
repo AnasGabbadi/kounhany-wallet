@@ -76,4 +76,14 @@ function refreshCache() {
     .catch(err => console.error('[AuthentikService] Refresh cache error:', err.message));
 }
 
-module.exports = { getAdminAndManagerUsers, refreshCache };
+// Force le prochain getAdminAndManagerUsers() à refetch depuis Authentik au lieu
+// d'attendre le TTL de 5 min — appelé par le webhook SCIM sur les événements
+// touchant les groupes Wallet Admins / Wallet Managers. Le cron 5 min reste en
+// place comme filet de sécurité si un événement SCIM est manqué.
+function invalidateUsersCache() {
+  cache = null;
+  cacheTs = 0;
+  console.log('[AuthentikService] Cache admin/manager users invalidé');
+}
+
+module.exports = { getAdminAndManagerUsers, refreshCache, invalidateUsersCache };

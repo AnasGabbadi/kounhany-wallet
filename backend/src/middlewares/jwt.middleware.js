@@ -23,8 +23,6 @@ function getSigningKey(header, callback) {
 
 // Middleware JWT
 const jwtMiddleware = (req, res, next) => {
-  console.log('[JWT] Headers reçus:', JSON.stringify(req.headers['authorization']?.substring(0, 30)));
-  console.log('[JWT] x-api-key:', req.headers['x-api-key']);
   // En mode test — garder API Key
   const apiKey = (req.headers['x-api-key'] || '').trim();
 
